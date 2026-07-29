@@ -1,0 +1,85 @@
+{
+  "name": "@dd3ok/agent-skills-stash",
+  "version": "0.1.0",
+  "description": "Search a separate local Agent Skills library by name or task and load only the selected SKILL.md",
+  "type": "module",
+  "bin": {
+    "stash": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "adapters/",
+    "docs/",
+    "examples/",
+    ".codex-plugin/",
+    ".claude-plugin/",
+    "README.md",
+    "README.ko.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build:types": "tsc -p tsconfig.json",
+    "build:skill": "node scripts/bundle-skill.mjs",
+    "build:adapters": "node scripts/build-adapters.mjs",
+    "build": "npm run clean && npm run build:types && npm run build:skill && npm run build:adapters",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:all": "npm run typecheck && npm test && npm run build && npm run test:dist",
+    "test:dist": "node --test tests-dist/*.test.mjs",
+    "bench": "node --import tsx benchmarks/route-benchmark.ts",
+    "lint:artifacts": "node scripts/check-generated.mjs",
+    "prepack": "npm run build && npm run test:dist && npm run lint:artifacts",
+    "pack:check": "npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dd3ok/agent-skills-stash.git"
+  },
+  "keywords": [
+    "agent-skills",
+    "skill-discovery",
+    "skill-catalog",
+    "skill-search",
+    "skill-library",
+    "skill-loader",
+    "skill-md",
+    "on-demand",
+    "manual-invocation",
+    "local-first",
+    "context-window",
+    "context-engineering",
+    "codex",
+    "claude-code",
+    "antigravity",
+    "skill-router",
+    "progressive-disclosure",
+    "ai-agents"
+  ],
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "stash",
+  "version": "0.1.0",
+  "description": "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
+  "author": {
+    "name": "dd3ok",
+    "url": "https://github.com/dd3ok"
+  }
+}

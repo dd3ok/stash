@@ -1,0 +1,18 @@
+schemaVersion: 1
+aliases:
+  - 브랜드 디자인 세계관
+tags:
+  - branding
+  - art-direction
+intents:
+  - create-brand-world
+examples:
+  positive:
+    - 브랜드 디자인 레퍼런스와 세계관을 만들어줘
+trust:
+  state: reviewed
+source:
+  license: MIT
+risk:
+  level: instruction-only
+  capabilities: []

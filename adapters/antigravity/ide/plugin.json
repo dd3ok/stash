@@ -1,0 +1,4 @@
+{
+  "name": "stash",
+  "description": "Search and load local Agent Skills from a separate SKILL.md library on demand."
+}

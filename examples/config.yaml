@@ -1,0 +1,16 @@
+version: 1
+catalogs:
+  - id: sample
+    root: "./sample-catalog"
+    enabled: true
+    trust: reviewed
+    followSymlinks: false
+    compatibility:
+      - codex
+      - claude-code
+      - antigravity
+defaults:
+  pageSize: 40
+  cacheTtlMs: 30000
+  materialScoreThreshold: 2
+  locale: ko-KR

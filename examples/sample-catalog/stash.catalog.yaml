@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: sample
+displayName: Synthetic sample skills
+description: Small multilingual catalog for Stash smoke tests
+skillDiscovery:
+  maxDepth: 4
+  ignore: []
+defaults:
+  trust: reviewed
+  compatibility:
+    - codex
+    - claude-code
+    - antigravity

@@ -1,0 +1,16 @@
+schemaVersion: 1
+tags:
+  - components
+  - tokens
+intents:
+  - implement-ui-library
+examples:
+  negative:
+    - 브랜드 아이덴티티와 로고 규칙을 만들어줘
+trust:
+  state: reviewed
+source:
+  license: MIT
+risk:
+  level: instruction-only
+  capabilities: []

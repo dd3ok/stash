@@ -1,0 +1,26 @@
+schemaVersion: 1
+aliases:
+  - visual identity
+  - 비주얼 아이덴티티
+  - 브랜드 디자인
+tags:
+  - branding
+  - identity
+intents:
+  - create-brand-system
+examples:
+  positive:
+    - 회사 브랜드 디자인 시스템을 만들어줘
+  negative:
+    - React 컴포넌트 라이브러리를 구현해줘
+compatibility:
+  codex: supported
+  claude-code: supported
+  antigravity: supported
+trust:
+  state: reviewed
+source:
+  license: MIT
+risk:
+  level: instruction-only
+  capabilities: []

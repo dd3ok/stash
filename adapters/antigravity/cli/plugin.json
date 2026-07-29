@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "stash",
+  "description": "Search and load local Agent Skills from a separate SKILL.md library on demand."
+}
