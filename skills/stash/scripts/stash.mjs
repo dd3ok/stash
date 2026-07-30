@@ -8571,6 +8571,18 @@ function matchesSource(record, selectors) {
     (selector) => identities.includes(selector.identity) || selector.url !== void 0 && selector.url === sourceUrl
   );
 }
+function sourceSortKey(record) {
+  if (record.source.id) {
+    return `0:${normalizeSourceIdentity(record.source.id)}`;
+  }
+  if (record.source.displayName) {
+    return `1:${normalizeSourceIdentity(record.source.displayName)}`;
+  }
+  if (record.source.url) {
+    return `2:${normalizeSourceUrl(record.source.url) ?? normalizeSourceIdentity(record.source.url)}`;
+  }
+  return "3:";
+}
 var StashCatalogImplementation = class {
   #configuration;
   #cacheDir;
@@ -8711,10 +8723,7 @@ var StashCatalogImplementation = class {
   }
   #resolveList(request, records, loaded, started) {
     const sorted = [...records].sort(
-      (left, right) => (left.source.id ?? "").localeCompare(
-        right.source.id ?? "",
-        "en"
-      ) || left.catalogId.localeCompare(right.catalogId, "en") || (left.group ?? "").localeCompare(right.group ?? "", "en") || left.name.localeCompare(right.name, "en") || left.ref.localeCompare(right.ref, "en")
+      (left, right) => sourceSortKey(left).localeCompare(sourceSortKey(right), "en") || left.catalogId.localeCompare(right.catalogId, "en") || (left.group ?? "").localeCompare(right.group ?? "", "en") || left.name.localeCompare(right.name, "en") || left.ref.localeCompare(right.ref, "en")
     );
     const requestHash = sha256(
       JSON.stringify({

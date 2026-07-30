@@ -1,7 +1,7 @@
 interface:
   display_name: "Agent Skills Stash"
   short_description: "Search local Agent Skills by name, source, or task"
-  default_prompt: "Use $stash MengTo/Skills list to list every skill from that source, or ask $stash to find every stored skill relevant to a task."
+  default_prompt: "Use $stash to list skills from a source, open an exact stored skill, or find every stored skill relevant to a task."
 
 policy:
   allow_implicit_invocation: false

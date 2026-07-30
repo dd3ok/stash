@@ -93,6 +93,22 @@ function matchesSource(
   );
 }
 
+function sourceSortKey(record: SkillRecord): string {
+  if (record.source.id) {
+    return `0:${normalizeSourceIdentity(record.source.id)}`;
+  }
+  if (record.source.displayName) {
+    return `1:${normalizeSourceIdentity(record.source.displayName)}`;
+  }
+  if (record.source.url) {
+    return `2:${
+      normalizeSourceUrl(record.source.url) ??
+      normalizeSourceIdentity(record.source.url)
+    }`;
+  }
+  return "3:";
+}
+
 class StashCatalogImplementation implements StashCatalog {
   readonly #configuration;
   readonly #cacheDir: string;
@@ -279,10 +295,7 @@ class StashCatalogImplementation implements StashCatalog {
   ): ResolveResult {
     const sorted = [...records].sort(
       (left, right) =>
-        (left.source.id ?? "").localeCompare(
-          right.source.id ?? "",
-          "en",
-        ) ||
+        sourceSortKey(left).localeCompare(sourceSortKey(right), "en") ||
         left.catalogId.localeCompare(right.catalogId, "en") ||
         (left.group ?? "").localeCompare(right.group ?? "", "en") ||
         left.name.localeCompare(right.name, "en") ||

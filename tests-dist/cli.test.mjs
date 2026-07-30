@@ -91,6 +91,45 @@ source:
   assert.match(stdout, /https:\/\/example\.com\/owner\/repository/u);
 });
 
+test("human list output keeps ID-less sources in distinct blocks", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-source-group-test-"));
+  const catalog = path.join(temp, "catalog");
+  const fixtures = [
+    { name: "alpha", source: "Source A" },
+    { name: "bravo", source: "Source B" },
+    { name: "charlie", source: "Source A" },
+  ];
+  for (const fixture of fixtures) {
+    const skill = path.join(catalog, fixture.name);
+    await mkdir(skill, { recursive: true });
+    await writeFile(
+      path.join(skill, "SKILL.md"),
+      `---\nname: ${fixture.name}\ndescription: A source grouping sample.\n---\n`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(skill, "stash.meta.yaml"),
+      `schemaVersion: 1\nsource:\n  displayName: ${fixture.source}\n`,
+      "utf8",
+    );
+  }
+
+  const { stdout } = await execFileAsync(process.execPath, [
+    bundledCli,
+    "list",
+    "--root",
+    catalog,
+    "--cache-dir",
+    path.join(temp, "cache"),
+  ]);
+  const sourceA = "Source A / default / (ungrouped)";
+  const sourceB = "Source B / default / (ungrouped)";
+  assert.equal(stdout.split(sourceA).length - 1, 1);
+  assert.equal(stdout.split(sourceB).length - 1, 1);
+  assert.ok(stdout.indexOf("- alpha") < stdout.indexOf("- charlie"));
+  assert.ok(stdout.indexOf("- charlie") < stdout.indexOf(sourceB));
+});
+
 test("license-only metadata retains the legacy catalog scope", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-license-source-test-"));
   const catalog = path.join(temp, "catalog");
