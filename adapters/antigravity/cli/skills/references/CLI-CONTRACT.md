@@ -15,12 +15,18 @@ Read this reference only when interpreting CLI JSON or diagnosing a routing fail
 
 `totalRelevant` counts every relevant result before pagination. `page.size` counts only the current transport page. `totalPossible` is diagnostic and does not belong in the default related list.
 
+Resolve commands return records in `matches[]`; use `matches[0].ref` after a successful unambiguous exact lookup. A `nextCursor` appears at `page.nextCursor`. For inventory or all-related requests, repeat the same command and filters with `--cursor <nextCursor>` until that field is absent.
+
+Each match may include `source.id`, `source.displayName`, `source.url`, `source.revision`, and `source.license`. Preserve these fields when attributing a skill. `--source <id|name|url>` is an exact provenance filter and may be repeated; it is independent of `--catalog` and `--group`. Repository forms such as `Owner/Repository` work when recorded as `source.displayName`. Comparison ignores Unicode and case differences but preserves punctuation; `foo-bar` does not match `foobar`.
+
 ## Relevance tiers
 
 - `exact`: complete name or alias match.
 - `strong`: phrase or multiple high-quality metadata signals.
 - `material`: calibrated lexical score plus independent evidence.
 - `possible`: weak or generic evidence; excluded by default.
+
+Source IDs and display names are searchable evidence. Prefer `--source` when the user explicitly names an author or repository so unrelated skills cannot enter the result set.
 
 ## Read statuses
 

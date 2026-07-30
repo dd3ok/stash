@@ -1,0 +1,17 @@
+{"id":"exact-name","kind":"exact","query":"visual-identity","expectedRelevant":["visual-identity"]}
+{"id":"exact-korean-alias","kind":"exact","query":"브랜드킷","expectedRelevant":["visual-identity"]}
+{"id":"korean-discovery","kind":"search","query":"브랜드 디자인 스킬들 알려줘","expectedRelevant":["brand-worlds","visual-identity"]}
+{"id":"mixed-language-discovery","kind":"search","query":"브랜드 identity logo art direction","expectedRelevant":["brand-worlds","visual-identity"]}
+{"id":"specialist-selection","kind":"search","query":"frontend component tokens","expectedRelevant":["design-system"],"expectedPossible":["frontend-workbench"]}
+{"id":"broad-generic-term","kind":"search","query":"design","expectedRelevant":["design-game-encounters","design-system"]}
+{"id":"typo-fallback","kind":"search","query":"security-audi","expectedRelevant":["security-audit"]}
+{"id":"negative-example-demotion","kind":"search","query":"database migration review","expectedRelevant":["api-contract-review","database-migration-review"],"expectedFirst":"database-migration-review"}
+{"id":"source-id-discovers-all","kind":"search","query":"mengto","expectedRelevant":["create-brand-world","design-game-encounters"]}
+{"id":"repository-name-discovers-all","kind":"search","query":"MengTo/Skills","expectedRelevant":["create-brand-world","design-game-encounters"]}
+{"id":"generic-repository-word-abstains","kind":"search","query":"skills","expectedRelevant":[]}
+{"id":"repository-filter-is-exact","kind":"search","query":"enemy waves arenas objectives boss phases","sources":["MengTo/Skills"],"expectedRelevant":["design-game-encounters"]}
+{"id":"source-separator-is-significant","kind":"list","sources":["foo-bar"],"expectedRelevant":["hyphenated-source"]}
+{"id":"source-search-preserves-separator","kind":"search","query":"foo-bar","expectedRelevant":["hyphenated-source"]}
+{"id":"partial-source-token-does-not-activate","kind":"search","query":"foo","expectedRelevant":[]}
+{"id":"source-url-preserves-separator","kind":"list","sources":["https://a-b.example"],"expectedRelevant":["hyphenated-url-source"]}
+{"id":"unrelated-query-abstains","kind":"search","query":"quantum chemistry spectroscopy","expectedRelevant":[]}

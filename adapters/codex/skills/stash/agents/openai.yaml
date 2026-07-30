@@ -1,7 +1,7 @@
 interface:
   display_name: "Agent Skills Stash"
-  short_description: "Open local Agent Skills only when requested"
-  default_prompt: "Use $stash design-system to load that stored skill, or ask $stash to find every stored skill relevant to a task."
+  short_description: "Search local Agent Skills by name, source, or task"
+  default_prompt: "Use $stash to list skills from a source, open an exact stored skill, or find every stored skill relevant to a task."
 
 policy:
   allow_implicit_invocation: false

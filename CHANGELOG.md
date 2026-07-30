@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add source provenance metadata, attribution, and explicit source-scoped routing by ID, repository display name, or URL.
+- Version the source-aware index and routing profile, including cursor invalidation and executable golden cases.
+- Keep valid ID-less sources in distinct list-output groups.
+
 ## 0.1.0
 
 - Publish as Agent Skills Stash while keeping `stash` as the invocation ID.

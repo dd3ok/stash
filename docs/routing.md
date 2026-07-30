@@ -15,11 +15,13 @@ Exact lookup normalizes Unicode, case, whitespace, hyphens, and underscores, the
 
 1. skill name;
 2. explicit aliases;
-3. optional catalog/group filters.
+3. optional source/catalog/group filters.
 
 It never invokes natural-language reranking.
 
 ## Discovery
+
+Current routing profile: `2`.
 
 Discovery uses BM25F-style scoring with initial weights:
 
@@ -31,6 +33,7 @@ Discovery uses BM25F-style scoring with initial weights:
 | tags | 3.0 |
 | positive examples | 2.0 |
 | description | 1.5 |
+| source | 6.0 |
 | group | 0.5 |
 
 A score alone cannot make a result relevant. The evidence gate also requires:
@@ -39,7 +42,7 @@ A score alone cannot make a result relevant. The evidence gate also requires:
 - multiple query terms across multiple fields with a high-priority field; or
 - a single specific term in name, alias, intent, or tag.
 
-Description-only and group-only generic matches remain `possible`.
+Description-only and group-only generic matches remain `possible`. An exact source ID or display name is strong provenance evidence. Use an explicit source filter when the request names an author or repository; the filter accepts an exact source ID, display name, or URL. Source comparison is Unicode- and case-normalized but preserves punctuation, so `foo-bar` and `foobar` remain different sources.
 
 Negative examples reduce the score. Character trigram similarity is a fallback only when no normal result is relevant.
 
@@ -65,6 +68,7 @@ Pagination limits one response, not the result set.
 Cursor contents bind:
 
 - index fingerprint;
+- routing profile version;
 - normalized request;
 - filters;
 - `includePossible`;

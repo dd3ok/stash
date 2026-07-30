@@ -10,6 +10,8 @@ examples:
 trust:
   state: reviewed
 source:
+  id: example
+  displayName: Example Skills
   license: MIT
 risk:
   level: instruction-only

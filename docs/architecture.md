@@ -26,6 +26,8 @@ flowchart TD
 
 The core is one deep Module. Callers learn four operations while the implementation hides catalog traversal, YAML parsing, indexing, relevance, pagination, cache invalidation, hash checks, and safe resource resolution.
 
+The model keeps three independent dimensions: `catalogId` identifies local storage, `group` supplies functional taxonomy, and `source` records provenance. A source filter accepts an exact ID, display name, or URL. Resolve filters compose across those dimensions before exact lookup, listing, or discovery.
+
 ## StashCatalog Interface
 
 ```ts
@@ -103,8 +105,10 @@ The index is not a source of truth.
 
 - Missing cache: scan and build.
 - Cache younger than `cacheTtlMs`: use directly.
+- Zero or negative `cacheTtlMs`: compare the fingerprint on every load.
 - Older cache: compare a path/mtime/size fingerprint.
 - Changed fingerprint: rebuild and atomically replace.
+- Changed index schema: ignore the older cache file and build the current version.
 - Explicit `stash index`: rebuild.
 - `stash doctor`: scan without repairing or mutating the catalog.
 

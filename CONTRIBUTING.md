@@ -14,7 +14,8 @@ npm run build
 npm run lint:artifacts
 ```
 
-Validate the Codex skill and plugin with the repository's documented validator commands before opening a pull request.
+Validate the Codex skill and plugin with the commands and prerequisites in
+[`docs/maintenance.md`](docs/maintenance.md) before opening a pull request.
 
 ## Change rules
 

@@ -34,6 +34,7 @@ python <plugin-creator>/scripts/validate_plugin.py .
 python <plugin-creator>/scripts/validate_plugin.py adapters/codex
 ```
 
+These external Python validators require PyYAML in the selected environment.
 On Windows, set `PYTHONUTF8=1` if the validator inherits a legacy code page.
 
 ## Vendor contract review

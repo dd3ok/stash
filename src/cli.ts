@@ -121,12 +121,21 @@ function printResolve(result: ResolveResult): void {
         : "") +
       "\n",
   );
-  let currentGroup = "";
+  let currentScope = "";
   for (const match of result.matches) {
     const group = match.group ?? "(ungrouped)";
-    if (group !== currentGroup) {
-      currentGroup = group;
-      process.stdout.write(`\n${group}\n`);
+    const source =
+      match.source?.displayName && match.source.id
+        ? `${match.source.displayName} [${match.source.id}]`
+        : match.source?.displayName ??
+          match.source?.id ??
+          match.source?.url;
+    const scope = source
+      ? `${source} / ${match.catalogId} / ${group}`
+      : `${match.catalogId} / ${group}`;
+    if (scope !== currentScope) {
+      currentScope = scope;
+      process.stdout.write(`\n${scope}\n`);
     }
     const tier = match.relevance ? ` [${match.relevance.tier}]` : "";
     process.stdout.write(`- ${match.name}${tier} — ${match.description}\n`);
@@ -141,9 +150,9 @@ function usage(): string {
   return `Stash — on-demand search for local Agent Skills
 
 Usage:
-  stash exact <name> [--group <group>] [--catalog <id>] [--json]
-  stash search <query> [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
-  stash list [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
+  stash exact <name> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--json]
+  stash search <query> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
+  stash list [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
   stash read <ref> [--resource <path>] [--format content|path|json]
   stash index [--catalog <id>] [--json]
   stash doctor [--catalog <id>] [--json]
@@ -171,6 +180,7 @@ async function main(): Promise<void> {
 
   const catalog = await createStashCatalog(createOptions(args));
   const catalogIds = flags(args, "catalog");
+  const sources = flags(args, "source");
   const group = flag(args, "group");
   const json = booleanFlag(args, "json");
 
@@ -188,6 +198,7 @@ async function main(): Promise<void> {
         kind: "exact",
         name,
         ...(catalogIds ? { catalogIds } : {}),
+        ...(sources ? { sources } : {}),
         ...(group ? { group } : {}),
       });
       json ? printJson(result) : printResolve(result);
@@ -208,6 +219,7 @@ async function main(): Promise<void> {
         kind: "search",
         query,
         ...(catalogIds ? { catalogIds } : {}),
+        ...(sources ? { sources } : {}),
         ...(group ? { group } : {}),
         ...(cursor ? { cursor } : {}),
         ...(pageSize !== undefined ? { pageSize } : {}),
@@ -224,6 +236,7 @@ async function main(): Promise<void> {
       const result = await catalog.resolve({
         kind: "list",
         ...(catalogIds ? { catalogIds } : {}),
+        ...(sources ? { sources } : {}),
         ...(group ? { group } : {}),
         ...(cursor ? { cursor } : {}),
         ...(pageSize !== undefined ? { pageSize } : {}),

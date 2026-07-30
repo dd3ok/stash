@@ -8,6 +8,7 @@ import {
   compactDescription,
   compactText,
   jaccard,
+  normalizeSourceIdentity,
   normalizeText,
   tokenize,
   trigrams,
@@ -26,6 +27,8 @@ interface SearchResult {
   expandedTerms: string[];
 }
 
+export const ROUTING_PROFILE_VERSION = 2 as const;
+
 const FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -33,6 +36,7 @@ const FIELD_WEIGHTS = {
   tag: 3,
   example: 2,
   description: 1.5,
+  source: 6,
   group: 0.5,
 } as const;
 
@@ -70,6 +74,11 @@ function fieldsFor(record: SkillRecord): Field[] {
       kind: "description",
       weight: FIELD_WEIGHTS.description,
       values: [record.description],
+    },
+    {
+      kind: "source",
+      weight: FIELD_WEIGHTS.source,
+      values: record.source.id ? [record.source.id] : [],
     },
     {
       kind: "group",
@@ -208,6 +217,18 @@ function hasPhraseMatch(record: SkillRecord, query: string): {
       compactText(alias).includes(compactQuery)
     ) {
       return { matched: true, reason: { kind: "alias", value: alias } };
+    }
+  }
+  const normalizedSourceQuery = normalizeSourceIdentity(query);
+  for (const source of [
+    record.source.id,
+    record.source.displayName,
+  ]) {
+    if (
+      source &&
+      normalizeSourceIdentity(source) === normalizedSourceQuery
+    ) {
+      return { matched: true, reason: { kind: "source", value: source } };
     }
   }
   if (
@@ -392,7 +413,7 @@ export function searchRecords(
         record,
         prepared.length,
         frequenciesByDocument,
-        normalizedQuery,
+        query,
         queryTerms,
         materialScoreThreshold,
       ),
@@ -420,16 +441,8 @@ export function searchRecords(
 export function toResolvedSkill(
   candidate: SearchCandidate,
 ): ResolvedSkill {
-  const record = candidate.record;
   return {
-    ref: record.ref,
-    catalogId: record.catalogId,
-    ...(record.group ? { group: record.group } : {}),
-    name: record.name,
-    description: compactDescription(record.description),
-    compatibility: record.compatibility,
-    trust: record.trust,
-    contentHash: record.contentHash,
+    ...toListedSkill(candidate.record),
     relevance: {
       tier: candidate.tier,
       score: Number(candidate.score.toFixed(4)),
@@ -447,6 +460,9 @@ export function toListedSkill(record: SkillRecord): ResolvedSkill {
     description: compactDescription(record.description),
     compatibility: record.compatibility,
     trust: record.trust,
+    ...(Object.keys(record.source).length > 0
+      ? { source: record.source }
+      : {}),
     contentHash: record.contentHash,
   };
 }
