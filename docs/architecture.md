@@ -105,6 +105,7 @@ The index is not a source of truth.
 
 - Missing cache: scan and build.
 - Cache younger than `cacheTtlMs`: use directly.
+- Zero or negative `cacheTtlMs`: compare the fingerprint on every load.
 - Older cache: compare a path/mtime/size fingerprint.
 - Changed fingerprint: rebuild and atomically replace.
 - Changed index schema: ignore the older cache file and build the current version.

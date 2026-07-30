@@ -620,7 +620,11 @@ class StashCatalogImplementation implements StashCatalog {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const index = await writeFreshIndex(catalog, this.#cacheDir);
+        const index = await writeFreshIndex(
+          catalog,
+          this.#cacheDir,
+          this.#now,
+        );
         results.push({
           catalogId: catalog.id,
           indexed: index.records.length,
@@ -657,7 +661,7 @@ class StashCatalogImplementation implements StashCatalog {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const scanned = await scanCatalog(catalog);
+        const scanned = await scanCatalog(catalog, this.#now);
         results.push({
           catalogId: catalog.id,
           root: scanned.index.root,

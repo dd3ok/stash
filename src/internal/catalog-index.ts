@@ -528,6 +528,7 @@ async function buildRecord(
 
 export async function scanCatalog(
   catalog: CatalogRegistration,
+  now: () => number = Date.now,
 ): Promise<ScanResult> {
   const discovered = await discoverCandidates(catalog);
   const warnings = [...discovered.warnings];
@@ -566,7 +567,7 @@ export async function scanCatalog(
       schemaVersion: INDEX_SCHEMA_VERSION,
       catalogId: catalog.id,
       root: discovered.root,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date(now()).toISOString(),
       fingerprint: discovered.fingerprint,
       records,
       warnings,
@@ -602,7 +603,12 @@ export async function loadCatalogIndex(
     ) {
       cached = parsed;
       const age = now() - Date.parse(parsed.generatedAt);
-      if (Number.isFinite(age) && age >= 0 && age <= cacheTtlMs) {
+      if (
+        cacheTtlMs > 0 &&
+        Number.isFinite(age) &&
+        age >= 0 &&
+        age <= cacheTtlMs
+      ) {
         return { index: parsed, refreshed: false };
       }
     }
@@ -616,7 +622,7 @@ export async function loadCatalogIndex(
   }
 
   return {
-    index: await writeFreshIndex(catalog, cacheDir),
+    index: await writeFreshIndex(catalog, cacheDir, now),
     refreshed: true,
   };
 }
@@ -624,13 +630,14 @@ export async function loadCatalogIndex(
 export async function writeFreshIndex(
   catalog: CatalogRegistration,
   cacheDir: string,
+  now: () => number = Date.now,
 ): Promise<CatalogIndex> {
   const catalogCacheDir = path.join(cacheDir, safeCatalogSegment(catalog.id));
   await mkdir(catalogCacheDir, { recursive: true });
   const lockPath = path.join(catalogCacheDir, "index.lock");
   const lock = await acquireLock(lockPath);
   try {
-    const { index } = await scanCatalog(catalog);
+    const { index } = await scanCatalog(catalog, now);
     const indexPath = path.join(catalogCacheDir, INDEX_FILE_NAME);
     const temporaryPath = path.join(
       catalogCacheDir,

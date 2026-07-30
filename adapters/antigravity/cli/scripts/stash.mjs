@@ -8126,7 +8126,7 @@ async function buildRecord(root, candidate, catalog, warnings) {
     return void 0;
   }
 }
-async function scanCatalog(catalog) {
+async function scanCatalog(catalog, now = Date.now) {
   const discovered = await discoverCandidates(catalog);
   const warnings = [...discovered.warnings];
   const records = [];
@@ -8161,7 +8161,7 @@ async function scanCatalog(catalog) {
       schemaVersion: INDEX_SCHEMA_VERSION,
       catalogId: catalog.id,
       root: discovered.root,
-      generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      generatedAt: new Date(now()).toISOString(),
       fingerprint: discovered.fingerprint,
       records,
       warnings
@@ -8181,7 +8181,7 @@ async function loadCatalogIndex(catalog, cacheDir, cacheTtlMs, now) {
     )) {
       cached = parsed;
       const age = now() - Date.parse(parsed.generatedAt);
-      if (Number.isFinite(age) && age >= 0 && age <= cacheTtlMs) {
+      if (cacheTtlMs > 0 && Number.isFinite(age) && age >= 0 && age <= cacheTtlMs) {
         return { index: parsed, refreshed: false };
       }
     }
@@ -8193,17 +8193,17 @@ async function loadCatalogIndex(catalog, cacheDir, cacheTtlMs, now) {
     return { index: cached, refreshed: false };
   }
   return {
-    index: await writeFreshIndex(catalog, cacheDir),
+    index: await writeFreshIndex(catalog, cacheDir, now),
     refreshed: true
   };
 }
-async function writeFreshIndex(catalog, cacheDir) {
+async function writeFreshIndex(catalog, cacheDir, now = Date.now) {
   const catalogCacheDir = path3.join(cacheDir, safeCatalogSegment(catalog.id));
   await mkdir(catalogCacheDir, { recursive: true });
   const lockPath = path3.join(catalogCacheDir, "index.lock");
   const lock = await acquireLock(lockPath);
   try {
-    const { index } = await scanCatalog(catalog);
+    const { index } = await scanCatalog(catalog, now);
     const indexPath = path3.join(catalogCacheDir, INDEX_FILE_NAME);
     const temporaryPath = path3.join(
       catalogCacheDir,
@@ -9003,7 +9003,11 @@ var StashCatalogImplementation = class {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const index = await writeFreshIndex(catalog, this.#cacheDir);
+        const index = await writeFreshIndex(
+          catalog,
+          this.#cacheDir,
+          this.#now
+        );
         results.push({
           catalogId: catalog.id,
           indexed: index.records.length,
@@ -9038,7 +9042,7 @@ var StashCatalogImplementation = class {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const scanned = await scanCatalog(catalog);
+        const scanned = await scanCatalog(catalog, this.#now);
         results.push({
           catalogId: catalog.id,
           root: scanned.index.root,

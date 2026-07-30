@@ -7,7 +7,7 @@ import { createStashCatalog } from "../src/stash-catalog.js";
 import { INDEX_SCHEMA_VERSION } from "../src/types.js";
 import { createCatalogFixture, fixtureSkills } from "./helpers.js";
 
-async function fixtureCatalog() {
+async function fixtureCatalog(now?: () => number) {
   const fixture = await createCatalogFixture(fixtureSkills);
   const catalog = await createStashCatalog({
     cacheDir: fixture.cacheDir,
@@ -27,6 +27,7 @@ async function fixtureCatalog() {
       materialScoreThreshold: 2,
       locale: "ko-KR",
     },
+    ...(now ? { now } : {}),
   });
   return { ...fixture, catalog };
 }
@@ -479,7 +480,8 @@ test("refresh detects new catalog content without mutating source skills", async
 });
 
 test("sidecar changes invalidate the index fingerprint", async () => {
-  const { catalog, root } = await fixtureCatalog();
+  const fixedNow = Date.now();
+  const { catalog, root } = await fixtureCatalog(() => fixedNow);
   await catalog.resolve({ kind: "exact", name: "visual-identity" });
   await writeFile(
     path.join(root, "web-design", "visual-identity", "stash.meta.yaml"),
