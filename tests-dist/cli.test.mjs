@@ -34,6 +34,16 @@ test("bundled skill CLI performs exact lookup without node_modules at runtime", 
     "---\nname: sample\ndescription: A sample bundled CLI skill.\n---\n\n# Sample\n",
     "utf8",
   );
+  await writeFile(
+    path.join(skill, "stash.meta.yaml"),
+    `schemaVersion: 1
+source:
+  id: mengto
+  displayName: MengTo/Skills
+  url: https://github.com/MengTo/Skills
+`,
+    "utf8",
+  );
   const { stdout } = await execFileAsync(process.execPath, [
     bundledCli,
     "exact",
@@ -42,11 +52,70 @@ test("bundled skill CLI performs exact lookup without node_modules at runtime", 
     catalog,
     "--cache-dir",
     path.join(temp, "cache"),
+    "--source",
+    "MengTo/Skills",
     "--json",
   ]);
   const result = JSON.parse(stdout);
   assert.equal(result.status, "ok");
   assert.equal(result.matches[0].name, "sample");
+  assert.equal(result.matches[0].source.id, "mengto");
+});
+
+test("human output preserves URL-only source attribution", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-url-source-test-"));
+  const catalog = path.join(temp, "catalog");
+  const skill = path.join(catalog, "url-sample");
+  await mkdir(skill, { recursive: true });
+  await writeFile(
+    path.join(skill, "SKILL.md"),
+    "---\nname: url-sample\ndescription: A URL-only source sample.\n---\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(skill, "stash.meta.yaml"),
+    `schemaVersion: 1
+source:
+  url: https://example.com/owner/repository
+`,
+    "utf8",
+  );
+  const { stdout } = await execFileAsync(process.execPath, [
+    bundledCli,
+    "list",
+    "--root",
+    catalog,
+    "--cache-dir",
+    path.join(temp, "cache"),
+  ]);
+  assert.match(stdout, /https:\/\/example\.com\/owner\/repository/u);
+});
+
+test("license-only metadata retains the legacy catalog scope", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-license-source-test-"));
+  const catalog = path.join(temp, "catalog");
+  const skill = path.join(catalog, "license-only-sample");
+  await mkdir(skill, { recursive: true });
+  await writeFile(
+    path.join(skill, "SKILL.md"),
+    "---\nname: license-only-sample\ndescription: A license-only source sample.\n---\n",
+    "utf8",
+  );
+  await writeFile(
+    path.join(skill, "stash.meta.yaml"),
+    "schemaVersion: 1\nsource:\n  license: MIT\n",
+    "utf8",
+  );
+  const { stdout } = await execFileAsync(process.execPath, [
+    bundledCli,
+    "list",
+    "--root",
+    catalog,
+    "--cache-dir",
+    path.join(temp, "cache"),
+  ]);
+  assert.match(stdout, /default \/ \(ungrouped\)/u);
+  assert.doesNotMatch(stdout, /default \/ default \//u);
 });
 
 test("npm package entrypoints match the compiled layout", async () => {
@@ -57,6 +126,7 @@ test("npm package entrypoints match the compiled layout", async () => {
 
   const { stdout } = await execFileAsync(process.execPath, [cli, "help"]);
   assert.match(stdout, /stash exact <name>/u);
+  assert.match(stdout, /--source <id\|name\|url>/u);
 });
 
 test("vendor adapters contain only their documented invocation policy", async () => {
@@ -88,6 +158,7 @@ test("vendor adapters contain only their documented invocation policy", async ()
   );
   assert.equal(claudeFrontmatter["disable-model-invocation"], true);
   assert.match(claudeSkill, /explicitly invokes `\/stash:stash`/u);
+  assert.match(claudeSkill, /--source <source>/u);
   assert.doesNotMatch(claudeSkill, /\$stash/u);
   await assert.rejects(
     access(
@@ -115,6 +186,7 @@ test("vendor adapters contain only their documented invocation policy", async ()
   );
   assert.match(antigravityCliSkill, /explicitly invokes `\/stash`/u);
   assert.match(antigravityCliSkill, /\.\.\/scripts\/stash\.mjs/u);
+  assert.match(antigravityCliSkill, /--source <source>/u);
   assert.doesNotMatch(antigravityCliSkill, /\$stash/u);
   await access(
     path.join(

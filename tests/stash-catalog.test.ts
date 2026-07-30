@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { decodeCursor, encodeCursor } from "../src/internal/util.js";
 import { createStashCatalog } from "../src/stash-catalog.js";
+import { INDEX_SCHEMA_VERSION } from "../src/types.js";
 import { createCatalogFixture, fixtureSkills } from "./helpers.js";
 
 async function fixtureCatalog() {
@@ -163,6 +165,239 @@ test("cursor is bound to the query and index", async () => {
     cursor: first.page.nextCursor,
   });
   assert.equal(stale.status, "cursor-stale");
+
+  const payload = decodeCursor<Record<string, unknown>>(
+    first.page.nextCursor ?? "",
+  );
+  assert.ok(payload);
+  const previousProfileCursor = encodeCursor({
+    ...payload,
+    routingProfileVersion: 1,
+  });
+  const staleProfile = await catalog.resolve({
+    kind: "list",
+    pageSize: 1,
+    cursor: previousProfileCursor,
+  });
+  assert.equal(staleProfile.status, "cursor-stale");
+});
+
+test("source provenance supports combined filters across every resolve mode", async () => {
+  const fixture = await createCatalogFixture([
+    {
+      group: "game-development",
+      name: "design-game-encounters",
+      description: "Design enemy waves, arenas, objectives, and boss phases.",
+      sidecar: `schemaVersion: 1
+trust:
+  state: reviewed
+source:
+  id: mengto
+  displayName: MengTo/Skills
+  url: https://github.com/MengTo/Skills
+  revision: 46abf7860d716c33de8217b6ff9f75debf28afaf
+  license: MIT
+`,
+    },
+    {
+      group: "web-design",
+      name: "create-brand-world",
+      description: "Create a visual brand world and art direction.",
+      sidecar: `schemaVersion: 1
+trust:
+  state: reviewed
+source:
+  id: mengto
+  displayName: MengTo/Skills
+  url: https://github.com/MengTo/Skills
+`,
+    },
+    {
+      group: "experimental-game",
+      name: "design-game-encounters",
+      description: "Prototype alternate encounter generators.",
+      sidecar: `schemaVersion: 1
+trust:
+  state: reviewed
+source:
+  id: another-author
+  displayName: Another Author
+  url: https://example.com/another-author
+`,
+    },
+  ]);
+  const decoy = await createCatalogFixture([
+    {
+      group: "game-development",
+      name: "design-game-encounters",
+      description: "A duplicate that must be excluded by catalog filtering.",
+      sidecar: `schemaVersion: 1
+source:
+  id: mengto
+  displayName: MengTo/Skills
+  url: https://github.com/MengTo/Skills
+`,
+    },
+  ]);
+  const catalog = await createStashCatalog({
+    cacheDir: fixture.cacheDir,
+    catalogs: [
+      { id: "personal", root: fixture.root },
+      { id: "decoy", root: decoy.root },
+    ],
+    defaults: { pageSize: 1 },
+  });
+
+  const listed = await catalog.resolve({
+    kind: "list",
+    catalogIds: ["personal"],
+    sources: ["MengTo/Skills"],
+    group: "game-development",
+  });
+  assert.equal(listed.status, "ok");
+  assert.equal(listed.totalRelevant, 1);
+  assert.equal(listed.matches[0]?.name, "design-game-encounters");
+  assert.deepEqual(listed.matches[0]?.source, {
+    id: "mengto",
+    displayName: "MengTo/Skills",
+    url: "https://github.com/MengTo/Skills",
+    revision: "46abf7860d716c33de8217b6ff9f75debf28afaf",
+    license: "MIT",
+  });
+
+  const exact = await catalog.resolve({
+    kind: "exact",
+    name: "design-game-encounters",
+    catalogIds: ["personal"],
+    sources: ["https://github.com/MengTo/Skills"],
+    group: "game-development",
+  });
+  assert.equal(exact.status, "ok");
+  assert.equal(exact.matches[0]?.source?.id, "mengto");
+
+  const searched = await catalog.resolve({
+    kind: "search",
+    query: "design-game-encounters",
+    catalogIds: ["personal"],
+    sources: ["mengto"],
+    group: "game-development",
+  });
+  assert.equal(searched.status, "ok");
+  assert.deepEqual(
+    searched.matches.map((match) => match.name),
+    ["design-game-encounters"],
+  );
+  assert.equal(searched.matches[0]?.source?.displayName, "MengTo/Skills");
+
+  const genericSourceWord = await catalog.resolve({
+    kind: "search",
+    query: "skills",
+  });
+  assert.equal(genericSourceWord.status, "no-match");
+
+  const firstPage = await catalog.resolve({
+    kind: "list",
+    pageSize: 1,
+  });
+  assert.ok(firstPage.page.nextCursor);
+  const stale = await catalog.resolve({
+    kind: "list",
+    sources: ["mengto"],
+    pageSize: 1,
+    cursor: firstPage.page.nextCursor,
+  });
+  assert.equal(stale.status, "cursor-stale");
+
+  const sourceSearch = await catalog.resolve({
+    kind: "search",
+    query: "mengto",
+  });
+  assert.equal(sourceSearch.totalRelevant, 3);
+  assert.ok(
+    sourceSearch.matches.every((match) => match.source?.id === "mengto"),
+  );
+
+  const invalidSource = await catalog.resolve({
+    kind: "list",
+    sources: ["///"],
+  });
+  assert.equal(invalidSource.status, "no-match");
+
+  const collisionFixture = await createCatalogFixture([
+    {
+      group: "collision",
+      name: "hyphenated-source",
+      description: "A source identity collision fixture.",
+      sidecar: `schemaVersion: 1
+source:
+  id: foo-bar
+`,
+    },
+    {
+      group: "collision",
+      name: "plain-source",
+      description: "A source identity collision fixture.",
+      sidecar: `schemaVersion: 1
+source:
+  id: foobar
+`,
+    },
+  ]);
+  const collisionCatalog = await createStashCatalog({
+    cacheDir: collisionFixture.cacheDir,
+    catalogs: [{ id: "collision", root: collisionFixture.root }],
+  });
+  const collisionResult = await collisionCatalog.resolve({
+    kind: "list",
+    sources: ["foo-bar"],
+  });
+  assert.deepEqual(
+    collisionResult.matches.map((match) => match.name),
+    ["hyphenated-source"],
+  );
+});
+
+test("legacy indexes are ignored and rebuilt with the current schema", async () => {
+  const fixture = await createCatalogFixture([
+    {
+      group: "portable",
+      name: "current-skill",
+      description: "A current skill with a source-aware record.",
+    },
+  ]);
+  const catalogCache = path.join(fixture.cacheDir, "personal");
+  await mkdir(catalogCache, { recursive: true });
+  await writeFile(
+    path.join(catalogCache, "index-v1.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      catalogId: "personal",
+      root: fixture.root,
+      generatedAt: new Date(Date.now() + 60_000).toISOString(),
+      fingerprint: "legacy",
+      records: [{ name: "legacy-without-source" }],
+      warnings: [],
+    })}\n`,
+    "utf8",
+  );
+  const catalog = await createStashCatalog({
+    cacheDir: fixture.cacheDir,
+    catalogs: [{ id: "personal", root: fixture.root }],
+    defaults: { cacheTtlMs: 600_000 },
+  });
+  const result = await catalog.resolve({
+    kind: "exact",
+    name: "current-skill",
+  });
+  assert.equal(result.status, "ok");
+  const currentIndex = JSON.parse(
+    await readFile(
+      path.join(catalogCache, `index-v${INDEX_SCHEMA_VERSION}.json`),
+      "utf8",
+    ),
+  ) as { schemaVersion: number; records: Array<{ source?: unknown }> };
+  assert.equal(currentIndex.schemaVersion, INDEX_SCHEMA_VERSION);
+  assert.ok(currentIndex.records.every((record) => record.source !== undefined));
 });
 
 test("no-skill query abstains", async () => {

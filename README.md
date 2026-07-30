@@ -71,7 +71,10 @@ Try the sample library:
 node skills/stash/scripts/stash.mjs doctor --config examples/config.yaml
 node skills/stash/scripts/stash.mjs exact design-system --config examples/config.yaml --json
 node skills/stash/scripts/stash.mjs search "frontend component tokens" --config examples/config.yaml --json
+node skills/stash/scripts/stash.mjs list --source example --config examples/config.yaml --json
 ```
+
+Add a stable `source.id` and optional repository display name or URL to a skill's `stash.meta.yaml`. `--source` then accepts any of those exact identities without changing the skill's catalog or group.
 
 Configure your library:
 

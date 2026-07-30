@@ -60,6 +60,22 @@ export function compactText(value: string): string {
   return normalizeText(value).replace(/\s+/gu, "");
 }
 
+export function normalizeSourceIdentity(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("und")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+export function normalizeSourceUrl(value: string): string | undefined {
+  try {
+    return new URL(value.normalize("NFKC").trim()).href;
+  } catch {
+    return undefined;
+  }
+}
+
 export function tokenize(value: string): string[] {
   const normalized = normalizeText(value);
   if (!normalized) {

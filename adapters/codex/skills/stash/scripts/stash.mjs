@@ -7365,7 +7365,7 @@ import path4 from "node:path";
 
 // src/types.ts
 var RESULT_SCHEMA_VERSION = 1;
-var INDEX_SCHEMA_VERSION = 1;
+var INDEX_SCHEMA_VERSION = 2;
 var StashError = class extends Error {
   exitCode;
   code;
@@ -7431,6 +7431,16 @@ function normalizeText(value) {
 }
 function compactText(value) {
   return normalizeText(value).replace(/\s+/gu, "");
+}
+function normalizeSourceIdentity(value) {
+  return value.normalize("NFKC").toLocaleLowerCase("und").replace(/\s+/gu, " ").trim();
+}
+function normalizeSourceUrl(value) {
+  try {
+    return new URL(value.normalize("NFKC").trim()).href;
+  } catch {
+    return void 0;
+  }
 }
 function tokenize(value) {
   const normalized = normalizeText(value);
@@ -7770,6 +7780,7 @@ var DEFAULT_IGNORE = /* @__PURE__ */ new Set([".git", "node_modules", "dist"]);
 var MAX_SKILL_BYTES = 1048576;
 var MAX_SIDECAR_BYTES = 262144;
 var NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+var INDEX_FILE_NAME = `index-v${INDEX_SCHEMA_VERSION}.json`;
 function asObject2(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -7821,6 +7832,16 @@ function parseSidecar(source, catalog) {
   const risk = asObject2(input.risk);
   const trust = asObject2(input.trust);
   const parsedTrust = trustState(trust.state);
+  const sourceId = typeof sourceInfo.id === "string" ? sourceInfo.id.trim() : void 0;
+  if (sourceId && (sourceId.length > 64 || !NAME_PATTERN.test(sourceId))) {
+    throw new Error(
+      "source.id must use 1-64 lowercase letters, digits, or hyphens."
+    );
+  }
+  const sourceDisplayName = typeof sourceInfo.displayName === "string" ? sourceInfo.displayName.trim() : void 0;
+  if (sourceDisplayName && sourceDisplayName.length > 128) {
+    throw new Error("source.displayName must be at most 128 characters.");
+  }
   return {
     aliases: stringArray(input.aliases),
     tags: stringArray(input.tags),
@@ -7840,6 +7861,8 @@ function parseSidecar(source, catalog) {
     },
     ...parsedTrust ? { trust: parsedTrust } : {},
     source: {
+      ...sourceId ? { id: sourceId } : {},
+      ...sourceDisplayName ? { displayName: sourceDisplayName } : {},
       ...typeof sourceInfo.url === "string" ? { url: sourceInfo.url } : {},
       ...typeof sourceInfo.revision === "string" ? { revision: sourceInfo.revision } : {},
       ...typeof sourceInfo.license === "string" ? { license: sourceInfo.license } : {}
@@ -8148,12 +8171,14 @@ async function scanCatalog(catalog) {
 }
 async function loadCatalogIndex(catalog, cacheDir, cacheTtlMs, now) {
   const catalogCacheDir = path3.join(cacheDir, safeCatalogSegment(catalog.id));
-  const indexPath = path3.join(catalogCacheDir, "index-v1.json");
+  const indexPath = path3.join(catalogCacheDir, INDEX_FILE_NAME);
   let cached;
   try {
     const source = await readFile2(indexPath, "utf8");
     const parsed = JSON.parse(source);
-    if (parsed.schemaVersion === INDEX_SCHEMA_VERSION && parsed.catalogId === catalog.id && Array.isArray(parsed.records)) {
+    if (parsed.schemaVersion === INDEX_SCHEMA_VERSION && parsed.catalogId === catalog.id && Array.isArray(parsed.records) && parsed.records.every(
+      (record) => record !== null && typeof record === "object" && record.source !== null && typeof record.source === "object"
+    )) {
       cached = parsed;
       const age = now() - Date.parse(parsed.generatedAt);
       if (Number.isFinite(age) && age >= 0 && age <= cacheTtlMs) {
@@ -8179,10 +8204,10 @@ async function writeFreshIndex(catalog, cacheDir) {
   const lock = await acquireLock(lockPath);
   try {
     const { index } = await scanCatalog(catalog);
-    const indexPath = path3.join(catalogCacheDir, "index-v1.json");
+    const indexPath = path3.join(catalogCacheDir, INDEX_FILE_NAME);
     const temporaryPath = path3.join(
       catalogCacheDir,
-      `index-v1.${process.pid}.${Date.now()}.tmp`
+      `index-v${INDEX_SCHEMA_VERSION}.${process.pid}.${Date.now()}.tmp`
     );
     const serialized = `${JSON.stringify(index, null, 2)}
 `;
@@ -8226,6 +8251,7 @@ async function acquireLock(lockPath) {
 }
 
 // src/internal/search.ts
+var ROUTING_PROFILE_VERSION = 2;
 var FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -8233,6 +8259,7 @@ var FIELD_WEIGHTS = {
   tag: 3,
   example: 2,
   description: 1.5,
+  source: 6,
   group: 0.5
 };
 function fieldsFor(record) {
@@ -8250,6 +8277,11 @@ function fieldsFor(record) {
       kind: "description",
       weight: FIELD_WEIGHTS.description,
       values: [record.description]
+    },
+    {
+      kind: "source",
+      weight: FIELD_WEIGHTS.source,
+      values: record.source.id ? [record.source.id] : []
     },
     {
       kind: "group",
@@ -8361,6 +8393,15 @@ function hasPhraseMatch(record, query) {
       return { matched: true, reason: { kind: "alias", value: alias } };
     }
   }
+  const normalizedSourceQuery = normalizeSourceIdentity(query);
+  for (const source of [
+    record.source.id,
+    record.source.displayName
+  ]) {
+    if (source && normalizeSourceIdentity(source) === normalizedSourceQuery) {
+      return { matched: true, reason: { kind: "source", value: source } };
+    }
+  }
   if (compactText(record.name).includes(compactQuery) || compactQuery.includes(compactText(record.name))) {
     return { matched: true, reason: { kind: "name", value: record.name } };
   }
@@ -8470,7 +8511,7 @@ function searchRecords(records, query, materialScoreThreshold) {
       record,
       prepared.length,
       frequenciesByDocument,
-      normalizedQuery,
+      query,
       queryTerms,
       materialScoreThreshold
     )
@@ -8492,16 +8533,8 @@ function searchRecords(records, query, materialScoreThreshold) {
   };
 }
 function toResolvedSkill(candidate) {
-  const record = candidate.record;
   return {
-    ref: record.ref,
-    catalogId: record.catalogId,
-    ...record.group ? { group: record.group } : {},
-    name: record.name,
-    description: compactDescription(record.description),
-    compatibility: record.compatibility,
-    trust: record.trust,
-    contentHash: record.contentHash,
+    ...toListedSkill(candidate.record),
     relevance: {
       tier: candidate.tier,
       score: Number(candidate.score.toFixed(4)),
@@ -8518,11 +8551,26 @@ function toListedSkill(record) {
     description: compactDescription(record.description),
     compatibility: record.compatibility,
     trust: record.trust,
+    ...Object.keys(record.source).length > 0 ? { source: record.source } : {},
     contentHash: record.contentHash
   };
 }
 
 // src/stash-catalog.ts
+function normalizeSourceSelector(source) {
+  const url = normalizeSourceUrl(source);
+  return {
+    identity: normalizeSourceIdentity(source),
+    ...url ? { url } : {}
+  };
+}
+function matchesSource(record, selectors) {
+  const identities = [record.source.id, record.source.displayName].filter((value) => value !== void 0).map(normalizeSourceIdentity);
+  const sourceUrl = record.source.url ? normalizeSourceUrl(record.source.url) : void 0;
+  return selectors.some(
+    (selector) => identities.includes(selector.identity) || selector.url !== void 0 && selector.url === sourceUrl
+  );
+}
 var StashCatalogImplementation = class {
   #configuration;
   #cacheDir;
@@ -8600,7 +8648,13 @@ var StashCatalogImplementation = class {
       throw error;
     }
     const group = request.group ? normalizeText(request.group) : void 0;
+    const sourceSelectors = (request.sources ?? []).map(
+      normalizeSourceSelector
+    );
+    const hasSourceFilter = (request.sources?.length ?? 0) > 0;
     const records = loaded.indexes.flatMap((index) => index.records).filter((record) => record.trust !== "quarantined").filter(
+      (record) => !hasSourceFilter || matchesSource(record, sourceSelectors)
+    ).filter(
       (record) => !group || normalizeText(record.group ?? "") === group || normalizeText(record.group ?? "").startsWith(`${group} `)
     );
     switch (request.kind) {
@@ -8657,12 +8711,16 @@ var StashCatalogImplementation = class {
   }
   #resolveList(request, records, loaded, started) {
     const sorted = [...records].sort(
-      (left, right) => (left.group ?? "").localeCompare(right.group ?? "", "en") || left.name.localeCompare(right.name, "en") || left.ref.localeCompare(right.ref, "en")
+      (left, right) => (left.source.id ?? "").localeCompare(
+        right.source.id ?? "",
+        "en"
+      ) || left.catalogId.localeCompare(right.catalogId, "en") || (left.group ?? "").localeCompare(right.group ?? "", "en") || left.name.localeCompare(right.name, "en") || left.ref.localeCompare(right.ref, "en")
     );
     const requestHash = sha256(
       JSON.stringify({
         kind: request.kind,
         catalogIds: request.catalogIds ?? [],
+        sources: request.sources ?? [],
         group: request.group ?? ""
       })
     );
@@ -8710,6 +8768,7 @@ var StashCatalogImplementation = class {
         kind: request.kind,
         query: normalizeText(request.query),
         catalogIds: request.catalogIds ?? [],
+        sources: request.sources ?? [],
         group: request.group ?? "",
         includePossible: request.includePossible ?? false
       })
@@ -8752,7 +8811,7 @@ var StashCatalogImplementation = class {
     let offset = 0;
     if (cursor) {
       const payload = decodeCursor(cursor);
-      if (!payload || payload.version !== 1 || payload.fingerprint !== fingerprint || payload.requestHash !== requestHash || !Number.isInteger(payload.offset) || payload.offset < 0) {
+      if (!payload || payload.version !== 1 || payload.routingProfileVersion !== ROUTING_PROFILE_VERSION || payload.fingerprint !== fingerprint || payload.requestHash !== requestHash || !Number.isInteger(payload.offset) || payload.offset < 0) {
         return { status: "cursor-stale", matches: [] };
       }
       offset = payload.offset;
@@ -8765,6 +8824,7 @@ var StashCatalogImplementation = class {
       ...nextOffset < matches.length ? {
         nextCursor: encodeCursor({
           version: 1,
+          routingProfileVersion: ROUTING_PROFILE_VERSION,
           fingerprint,
           requestHash,
           offset: nextOffset
@@ -9109,13 +9169,15 @@ function printResolve(result) {
   process.stdout.write(
     `${result.totalRelevant} relevant skill(s)` + (result.totalPossible > 0 ? `, ${result.totalPossible} possible match(es)` : "") + "\n"
   );
-  let currentGroup = "";
+  let currentScope = "";
   for (const match of result.matches) {
     const group = match.group ?? "(ungrouped)";
-    if (group !== currentGroup) {
-      currentGroup = group;
+    const source = match.source?.displayName && match.source.id ? `${match.source.displayName} [${match.source.id}]` : match.source?.displayName ?? match.source?.id ?? match.source?.url;
+    const scope = source ? `${source} / ${match.catalogId} / ${group}` : `${match.catalogId} / ${group}`;
+    if (scope !== currentScope) {
+      currentScope = scope;
       process.stdout.write(`
-${group}
+${scope}
 `);
     }
     const tier = match.relevance ? ` [${match.relevance.tier}]` : "";
@@ -9134,9 +9196,9 @@ function usage() {
   return `Stash \u2014 on-demand search for local Agent Skills
 
 Usage:
-  stash exact <name> [--group <group>] [--catalog <id>] [--json]
-  stash search <query> [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
-  stash list [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
+  stash exact <name> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--json]
+  stash search <query> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
+  stash list [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
   stash read <ref> [--resource <path>] [--format content|path|json]
   stash index [--catalog <id>] [--json]
   stash doctor [--catalog <id>] [--json]
@@ -9158,6 +9220,7 @@ async function main() {
   }
   const catalog = await createStashCatalog(createOptions(args));
   const catalogIds = flags(args, "catalog");
+  const sources = flags(args, "source");
   const group = flag(args, "group");
   const json = booleanFlag(args, "json");
   switch (args.command) {
@@ -9174,6 +9237,7 @@ async function main() {
         kind: "exact",
         name,
         ...catalogIds ? { catalogIds } : {},
+        ...sources ? { sources } : {},
         ...group ? { group } : {}
       });
       json ? printJson(result) : printResolve(result);
@@ -9194,6 +9258,7 @@ async function main() {
         kind: "search",
         query,
         ...catalogIds ? { catalogIds } : {},
+        ...sources ? { sources } : {},
         ...group ? { group } : {},
         ...cursor ? { cursor } : {},
         ...pageSize !== void 0 ? { pageSize } : {},
@@ -9208,6 +9273,7 @@ async function main() {
       const result = await catalog.resolve({
         kind: "list",
         ...catalogIds ? { catalogIds } : {},
+        ...sources ? { sources } : {},
         ...group ? { group } : {},
         ...cursor ? { cursor } : {},
         ...pageSize !== void 0 ? { pageSize } : {}

@@ -33,6 +33,7 @@ const DEFAULT_IGNORE = new Set([".git", "node_modules", "dist"]);
 const MAX_SKILL_BYTES = 1_048_576;
 const MAX_SIDECAR_BYTES = 262_144;
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+const INDEX_FILE_NAME = `index-v${INDEX_SCHEMA_VERSION}.json`;
 
 interface Candidate {
   skillFile: string;
@@ -57,6 +58,8 @@ interface Sidecar {
   compatibility: VendorCompatibility;
   trust?: TrustState;
   source: {
+    id?: string;
+    displayName?: string;
     url?: string;
     revision?: string;
     license?: string;
@@ -148,6 +151,23 @@ function parseSidecar(
   const risk = asObject(input.risk);
   const trust = asObject(input.trust);
   const parsedTrust = trustState(trust.state);
+  const sourceId =
+    typeof sourceInfo.id === "string" ? sourceInfo.id.trim() : undefined;
+  if (
+    sourceId &&
+    (sourceId.length > 64 || !NAME_PATTERN.test(sourceId))
+  ) {
+    throw new Error(
+      "source.id must use 1-64 lowercase letters, digits, or hyphens.",
+    );
+  }
+  const sourceDisplayName =
+    typeof sourceInfo.displayName === "string"
+      ? sourceInfo.displayName.trim()
+      : undefined;
+  if (sourceDisplayName && sourceDisplayName.length > 128) {
+    throw new Error("source.displayName must be at most 128 characters.");
+  }
 
   return {
     aliases: stringArray(input.aliases),
@@ -168,6 +188,8 @@ function parseSidecar(
     },
     ...(parsedTrust ? { trust: parsedTrust } : {}),
     source: {
+      ...(sourceId ? { id: sourceId } : {}),
+      ...(sourceDisplayName ? { displayName: sourceDisplayName } : {}),
       ...(typeof sourceInfo.url === "string" ? { url: sourceInfo.url } : {}),
       ...(typeof sourceInfo.revision === "string"
         ? { revision: sourceInfo.revision }
@@ -560,7 +582,7 @@ export async function loadCatalogIndex(
   now: () => number,
 ): Promise<{ index: CatalogIndex; refreshed: boolean }> {
   const catalogCacheDir = path.join(cacheDir, safeCatalogSegment(catalog.id));
-  const indexPath = path.join(catalogCacheDir, "index-v1.json");
+  const indexPath = path.join(catalogCacheDir, INDEX_FILE_NAME);
   let cached: CatalogIndex | undefined;
 
   try {
@@ -569,7 +591,14 @@ export async function loadCatalogIndex(
     if (
       parsed.schemaVersion === INDEX_SCHEMA_VERSION &&
       parsed.catalogId === catalog.id &&
-      Array.isArray(parsed.records)
+      Array.isArray(parsed.records) &&
+      parsed.records.every(
+        (record) =>
+          record !== null &&
+          typeof record === "object" &&
+          record.source !== null &&
+          typeof record.source === "object",
+      )
     ) {
       cached = parsed;
       const age = now() - Date.parse(parsed.generatedAt);
@@ -602,10 +631,10 @@ export async function writeFreshIndex(
   const lock = await acquireLock(lockPath);
   try {
     const { index } = await scanCatalog(catalog);
-    const indexPath = path.join(catalogCacheDir, "index-v1.json");
+    const indexPath = path.join(catalogCacheDir, INDEX_FILE_NAME);
     const temporaryPath = path.join(
       catalogCacheDir,
-      `index-v1.${process.pid}.${Date.now()}.tmp`,
+      `index-v${INDEX_SCHEMA_VERSION}.${process.pid}.${Date.now()}.tmp`,
     );
     const serialized = `${JSON.stringify(index, null, 2)}\n`;
     await writeFile(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
