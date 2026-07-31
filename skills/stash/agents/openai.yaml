@@ -1,5 +1,5 @@
 interface:
-  display_name: "Agent Skills Stash"
+  display_name: "Stash"
   short_description: "Search local Agent Skills by name, source, or task"
   default_prompt: "Use $stash to list skills from a source, open an exact stored skill, or find every stored skill relevant to a task."
 

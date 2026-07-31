@@ -21,7 +21,7 @@ It never invokes natural-language reranking.
 
 ## Discovery
 
-Current routing profile: `2`.
+Current routing profile: `3`.
 
 Discovery uses BM25F-style scoring with initial weights:
 
@@ -38,13 +38,23 @@ Discovery uses BM25F-style scoring with initial weights:
 
 A score alone cannot make a result relevant. The evidence gate also requires:
 
-- phrase evidence in name/alias; or
+- whole-term phrase evidence in name/alias; or
 - multiple query terms across multiple fields with a high-priority field; or
+- at least three query terms in a description, above the dense-description
+  threshold; or
 - a single specific term in name, alias, intent, or tag.
 
-Description-only and group-only generic matches remain `possible`. An exact source ID or display name is strong provenance evidence. Use an explicit source filter when the request names an author or repository; the filter accepts an exact source ID, display name, or URL. Source comparison is Unicode- and case-normalized but preserves punctuation, so `foo-bar` and `foobar` remain different sources.
+Single-term description-only and group-only generic matches remain `possible`.
+An exact source ID or display name is strong provenance evidence. Use an
+explicit source filter when the request names an author or repository; the
+filter accepts an exact source ID, display name, or URL. Source comparison is
+Unicode- and case-normalized but preserves punctuation, so `foo-bar` and
+`foobar` remain different sources.
 
-Negative examples reduce the score. Character trigram similarity is a fallback only when no normal result is relevant.
+Name and alias phrase matches preserve token boundaries, so short queries such
+as `ui` do not activate unrelated words containing the same characters.
+Negative examples reduce the score. Character trigram similarity is a fallback
+only when no normal result is relevant.
 
 ## All relevant
 

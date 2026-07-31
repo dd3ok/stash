@@ -168,6 +168,59 @@ test("npm package entrypoints match the compiled layout", async () => {
   assert.match(stdout, /--source <id\|name\|url>/u);
 });
 
+test("distribution metadata uses one Stash identity and version", async () => {
+  const packageManifest = JSON.parse(
+    await readFile(path.join(root, "package.json"), "utf8"),
+  );
+  assert.equal(packageManifest.name, "@dd3ok/stash");
+  assert.equal(
+    packageManifest.repository.url,
+    "git+https://github.com/dd3ok/stash.git",
+  );
+
+  const codexManifest = JSON.parse(
+    await readFile(path.join(root, ".codex-plugin", "plugin.json"), "utf8"),
+  );
+  assert.equal(codexManifest.name, "stash");
+  assert.equal(codexManifest.interface.displayName, "Stash");
+  assert.equal(codexManifest.version, packageManifest.version);
+
+  const openaiMetadata = YAML.parse(
+    await readFile(
+      path.join(root, "skills", "stash", "agents", "openai.yaml"),
+      "utf8",
+    ),
+  );
+  assert.equal(openaiMetadata.interface.display_name, "Stash");
+
+  const claudeMarketplace = JSON.parse(
+    await readFile(
+      path.join(root, ".claude-plugin", "marketplace.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(claudeMarketplace.name, "dd3ok-stash");
+  assert.equal(claudeMarketplace.plugins.length, 1);
+  const claudePlugin = claudeMarketplace.plugins[0];
+  assert.equal(claudePlugin.name, "stash");
+  assert.equal(claudePlugin.version, packageManifest.version);
+
+  const claudeManifest = JSON.parse(
+    await readFile(
+      path.join(
+        root,
+        "adapters",
+        "claude-code",
+        ".claude-plugin",
+        "plugin.json",
+      ),
+      "utf8",
+    ),
+  );
+  assert.equal(claudeManifest.name, "stash");
+  assert.equal(claudeManifest.version, packageManifest.version);
+});
+
 test("vendor adapters contain only their documented invocation policy", async () => {
   const claudeMarketplace = JSON.parse(
     await readFile(
@@ -175,7 +228,7 @@ test("vendor adapters contain only their documented invocation policy", async ()
       "utf8",
     ),
   );
-  assert.equal(claudeMarketplace.name, "dd3ok-agent-skills-stash");
+  assert.equal(claudeMarketplace.name, "dd3ok-stash");
   assert.equal(claudeMarketplace.owner.name, "dd3ok");
   assert.equal(
     claudeMarketplace.plugins[0].source,

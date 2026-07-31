@@ -4,7 +4,7 @@ description: Search a separate local Agent Skills library by exact name, source,
 disable-model-invocation: true
 ---
 
-# Agent Skills Stash
+# Stash
 
 Use the bundled CLI to search and read a separate local Agent Skills library. Keep skills intended for normal host discovery and all skill lifecycle management outside this workflow.
 

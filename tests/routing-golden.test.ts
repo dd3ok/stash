@@ -44,6 +44,25 @@ source:
       description: "Handle general frontend implementation across web projects.",
     },
     {
+      group: "frontend",
+      name: "ui-craft",
+      description: "Design and implement polished user interfaces.",
+    },
+    {
+      group: "tooling",
+      name: "build-audio-tools",
+      description: "Build audio processing tools.",
+    },
+    {
+      group: "web-design",
+      name: "company-logos",
+      description: "Collect and present company logos.",
+      sidecar: `schemaVersion: 1
+aliases:
+  - logo gallery
+`,
+    },
+    {
       group: "web-design",
       name: "create-brand-world",
       description: "Create a visual brand world and art direction.",
@@ -52,6 +71,38 @@ source:
   id: mengto
   displayName: MengTo/Skills
   url: https://github.com/MengTo/Skills
+`,
+    },
+    {
+      group: "media-production",
+      name: "elevenlabs-tts",
+      description:
+        "Generate realistic voice audio from text with ElevenLabs speech and expressive multilingual studio delivery controls.",
+    },
+    {
+      group: "media-production",
+      name: "waveform-previews",
+      description: "Generate audio previews and waveforms for media projects.",
+    },
+    {
+      group: "media-production",
+      name: "recording-cleanup",
+      description: "Edit voice and audio recordings with cleanup and mixing.",
+    },
+    {
+      group: "media-production",
+      name: "narration-workflows",
+      description: "Compare voice narration workflows for video production.",
+    },
+    {
+      group: "documentation",
+      name: "media-options-guide",
+      description:
+        "Generate reference documentation that compares available voice and audio options for production teams and workflows.",
+      sidecar: `schemaVersion: 1
+examples:
+  negative:
+    - generate voice audio
 `,
     },
     {
