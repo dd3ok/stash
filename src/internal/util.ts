@@ -186,6 +186,34 @@ export function platformCachePath(): string {
   );
 }
 
+export function platformManagedPath(): string {
+  if (process.env.STASH_MANAGED_HOME) {
+    return path.resolve(process.env.STASH_MANAGED_HOME);
+  }
+  const currentPlatform = platform();
+  if (currentPlatform === "win32") {
+    return path.join(
+      process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData", "Local"),
+      "stash",
+      "managed",
+    );
+  }
+  if (currentPlatform === "darwin") {
+    return path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "stash",
+      "managed",
+    );
+  }
+  return path.join(
+    process.env.XDG_DATA_HOME ?? path.join(homedir(), ".local", "share"),
+    "stash",
+    "managed",
+  );
+}
+
 export function safeCatalogSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/gu, "_");
 }

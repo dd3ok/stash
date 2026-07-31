@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add a separate `StashLifecycle` Module with a local managed inactive store.
+- Add explicit local `install`/`archive`/`activate`/`deactivate`/`status`
+  commands with provenance, tree hashes, tracked deployments, and drift guards.
+- Add stable skill/deployment identities, explicit ownership and target records,
+  orthogonal status fields, archive journals, guarded dead-owner lock recovery,
+  and fail-closed malformed lock handling.
+- Fold hash-matching catalog sources and Stash-owned deployments into the
+  managed canonical search result while preserving scoped lookup and raw reads.
+- Reject workspace lifecycle and Antigravity CLI's flat standalone skill shapes.
+- Keep external catalogs, plugins, and vendor settings outside lifecycle write
+  authority; reject links, overwrites, detached removals, and remote sources.
+- Make a fresh Stash installation useful without catalog configuration by
+  auto-discovering its managed store after the first import.
 - Unify the public brand, package, repository, and marketplace identifiers as Stash.
 - Reject partial-word compact-name matches that promoted unrelated short queries.
 - Restore material routing for dense three-term descriptions at a regression-tested threshold.

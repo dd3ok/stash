@@ -71,7 +71,7 @@ await writeJson(path.join(claudeRoot, ".claude-plugin", "plugin.json"), {
   name: "stash",
   version: packageVersion,
   description:
-    "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
+    "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
   author: { name: "dd3ok", url: "https://github.com/dd3ok" },
 });
 
@@ -91,7 +91,7 @@ await writeFile(
 await writeJson(path.join(ideRoot, "plugin.json"), {
   name: "stash",
   description:
-    "Search and load local Agent Skills from a separate SKILL.md library on demand.",
+    "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
 });
 
 const cliRoot = path.join(antigravityRoot, "cli");
@@ -119,5 +119,5 @@ await writeJson(path.join(cliRoot, "plugin.json"), {
   $schema: "https://antigravity.google/schemas/v1/plugin.json",
   name: "stash",
   description:
-    "Search and load local Agent Skills from a separate SKILL.md library on demand.",
+    "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
 });

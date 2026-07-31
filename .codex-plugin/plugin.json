@@ -1,7 +1,7 @@
 {
   "name": "stash",
-  "version": "0.1.1",
-  "description": "One explicit doorway to a local Agent Skills library—search by name or task and load only the selected SKILL.md.",
+  "version": "0.2.0",
+  "description": "Search read-only Agent Skills catalogs and explicitly manage a local inactive standalone skill store.",
   "author": {
     "name": "dd3ok",
     "url": "https://github.com/dd3ok"
@@ -24,18 +24,19 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Stash",
-    "shortDescription": "Open local Agent Skills only when requested.",
-    "longDescription": "Keep a large local Agent Skills library behind one explicit entry point. Search by exact name or task, then load only the selected SKILL.md instructions and required resources.",
+    "shortDescription": "Search and manage inactive local Agent Skills.",
+    "longDescription": "Keep a large local Agent Skills library behind one explicit entry point. Search external read-only catalogs, import standalone skills into an inactive managed store, and deploy only explicitly selected copies.",
     "developerName": "dd3ok",
     "category": "Productivity",
     "capabilities": [
       "Local skill discovery",
       "Progressive disclosure",
-      "Read-only"
+      "Managed inactive skills"
     ],
     "defaultPrompt": [
       "Use $stash design-system to load that exact stored skill.",
-      "Use $stash to find every stored skill relevant to this task."
+      "Use $stash to find every stored skill relevant to this task.",
+      "Use $stash to install this local skill as inactive."
     ]
   }
 }

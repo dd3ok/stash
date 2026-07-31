@@ -2,11 +2,24 @@
 
 ## Scope
 
-Stash discovers and reads local Agent Skills. A skill can contain untrusted instructions, scripts, URLs, and assets. Treat adding a catalog like adding source code.
+Stash discovers, reads, and explicitly stores local Agent Skills. A skill can contain untrusted instructions, scripts, URLs, and assets. Treat adding a catalog or importing a managed skill like adding source code.
 
 ## Guarantees
 
-- Stash never edits configured catalog files.
+- Stash never edits external configured catalog files.
+- Managed imports reject symlinks, junctions, special files, non-portable path
+  names, case-insensitive collisions, oversized trees, and overwrites.
+- Lifecycle copies are staged and tree-hash verified before atomic rename.
+- Destructive operations apply only to explicitly selected standalone skills
+  or recorded deployments. Untracked and drifted deployments are preserved.
+- Archive recovery is journaled. A rollback never overwrites an occupied source
+  path, and a committed tombstone is deleted only after its tree hash matches.
+- Deactivation requires matching Stash ownership, skill/deployment identity,
+  target, and tree hash.
+- Catalog overlap grants no write authority. Hash-matching related copies are
+  folded only in the read projection; drifted or unrelated copies stay visible.
+- Lifecycle lock ownership is atomically published. Proven-dead owners are
+  reclaimed under a separate guard; malformed or live ownership fails closed.
 - Indexing does not execute scripts.
 - Resource paths must stay inside the selected skill and catalog roots after `realpath`.
 - Absolute paths and `..` traversal are rejected.
@@ -24,6 +37,9 @@ Stash discovers and reads local Agent Skills. A skill can contain untrusted inst
 - Stash does not sandbox scripts executed later by a host agent.
 - A well-formed skill can still contain malicious or misleading instructions.
 - Lexical relevance is not a security classifier.
+- `deployed` means present in a host discovery root; it does not prove that a
+  host enable/disable override is enabled.
+- Plugin lifecycle and vendor setting changes are outside Stash lifecycle.
 
 ## Catalog review
 

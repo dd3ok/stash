@@ -7,8 +7,24 @@ npm ci
 npm run build
 ```
 
-Configure a catalog as described in the README before invoking Stash. Installing
-the router does not move, enable, disable, or modify any catalog skill.
+Configure an external catalog as described in the README, or use the managed
+store without a config file. Installing the router does not move, enable,
+disable, or modify any external catalog skill.
+
+## Managed store
+
+The first explicit lifecycle command creates the platform managed root. Override
+it with `STASH_MANAGED_HOME`, `--managed-root`, or config `managedRoot`.
+
+```bash
+stash install /path/to/rare-skill
+stash status rare-skill
+```
+
+Remote URLs are not accepted by the CLI. Stage a requested repository revision
+outside every host discovery path, review it, and import the local skill root.
+Lifecycle deployment is standalone-only: plugins and vendor enable/disable
+settings stay under their host's controls.
 
 ## OpenAI Codex
 
@@ -94,5 +110,7 @@ before declaring that version supported.
 
 ## Uninstall and rollback
 
-Use each host's own plugin or skill lifecycle controls. Removing Stash affects
-only the router. Catalogs and their skill contents remain untouched.
+Use each host's own plugin controls. Before uninstalling Stash, run
+`stash status --json` and deactivate any recorded standalone deployments you
+no longer want. Removing the router does not remove external catalogs, the
+managed store, or host deployments automatically.

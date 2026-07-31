@@ -1,7 +1,7 @@
 {
   "name": "stash",
-  "version": "0.1.1",
-  "description": "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
+  "version": "0.2.0",
+  "description": "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
   "author": {
     "name": "dd3ok",
     "url": "https://github.com/dd3ok"

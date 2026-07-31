@@ -497,5 +497,11 @@ export function toListedSkill(record: SkillRecord): ResolvedSkill {
       ? { source: record.source }
       : {}),
     contentHash: record.contentHash,
+    ...(record.managedSkillId
+      ? { managedSkillId: record.managedSkillId }
+      : {}),
+    ...(record.relatedCopies && record.relatedCopies.length > 0
+      ? { relatedCopies: record.relatedCopies }
+      : {}),
   };
 }

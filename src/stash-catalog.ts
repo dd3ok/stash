@@ -27,6 +27,7 @@ import {
   scanCatalog,
   writeFreshIndex,
 } from "./internal/catalog-index.js";
+import { projectManagedCopies } from "./internal/managed-projection.js";
 import {
   ROUTING_PROFILE_VERSION,
   searchRecords,
@@ -124,7 +125,10 @@ class StashCatalogImplementation implements StashCatalog {
     this.#now = now;
   }
 
-  async #loadIndexes(catalogIds?: string[]): Promise<LoadedIndexes> {
+  async #loadIndexes(
+    catalogIds?: string[],
+    applyManagedProjection = true,
+  ): Promise<LoadedIndexes> {
     const selected = this.#selectRegistrations(catalogIds);
     const indexes: CatalogIndex[] = [];
     for (const catalog of selected) {
@@ -136,13 +140,20 @@ class StashCatalogImplementation implements StashCatalog {
       );
       indexes.push(loaded.index);
     }
+    const projected = applyManagedProjection
+      ? await projectManagedCopies(indexes, this.#configuration.managedRoot)
+      : { indexes, fingerprintPart: "" };
     return {
-      indexes,
+      indexes: projected.indexes,
       registrations: selected,
-      warnings: indexes.flatMap((index) => index.warnings),
+      warnings: projected.indexes.flatMap((index) => index.warnings),
       fingerprint: sha256(
-        indexes
-          .map((index) => `${index.catalogId}:${index.fingerprint}`)
+        [
+          ...projected.indexes.map(
+            (index) => `${index.catalogId}:${index.fingerprint}`,
+          ),
+          projected.fingerprintPart,
+        ]
           .sort()
           .join("\n"),
       ),
@@ -479,7 +490,7 @@ class StashCatalogImplementation implements StashCatalog {
         resource,
       };
     }
-    const loaded = await this.#loadIndexes();
+    const loaded = await this.#loadIndexes(undefined, false);
     let record: SkillRecord | undefined;
     let index: CatalogIndex | undefined;
     for (const candidateIndex of loaded.indexes) {

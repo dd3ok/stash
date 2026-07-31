@@ -2,6 +2,12 @@ export const RESULT_SCHEMA_VERSION = 1 as const;
 export const INDEX_SCHEMA_VERSION = 2 as const;
 
 export type Vendor = "codex" | "claude-code" | "antigravity";
+export type LifecycleHost =
+  | "codex"
+  | "claude-code"
+  | "antigravity-ide"
+  | "antigravity-cli";
+export type LifecycleScope = "user" | "workspace" | "custom";
 export type CompatibilityState = "supported" | "partial" | "unsupported" | "unknown";
 export type TrustState = "trusted" | "reviewed" | "unreviewed" | "quarantined";
 export type RelevanceTier = "exact" | "strong" | "material" | "possible";
@@ -25,6 +31,16 @@ export interface CatalogRisk {
   capabilities: string[];
 }
 
+export interface RelatedSkillCopy {
+  kind: "source" | "deployment";
+  catalogId: string;
+  ref: string;
+  skillId: string;
+  targetId?: string;
+  host?: LifecycleHost;
+  scope?: LifecycleScope;
+}
+
 export interface SkillRecord {
   ref: string;
   catalogId: string;
@@ -44,6 +60,8 @@ export interface SkillRecord {
   contentHash: string;
   modifiedMs: number;
   size: number;
+  managedSkillId?: string;
+  relatedCopies?: RelatedSkillCopy[];
 }
 
 export interface CatalogWarning {
@@ -85,11 +103,13 @@ export interface StashConfiguration {
   version: 1;
   catalogs: CatalogRegistration[];
   defaults: StashDefaults;
+  managedRoot?: string;
 }
 
 export interface CreateStashCatalogOptions {
   configPath?: string;
   cacheDir?: string;
+  managedRoot?: string;
   catalogs?: CatalogRegistration[];
   defaults?: Partial<StashDefaults>;
   now?: () => number;
@@ -142,6 +162,8 @@ export interface ResolvedSkill {
   trust: TrustState;
   source?: CatalogSource;
   contentHash: string;
+  managedSkillId?: string;
+  relatedCopies?: RelatedSkillCopy[];
   relevance?: {
     tier: RelevanceTier;
     score: number;
@@ -236,6 +258,130 @@ export interface StashCatalog {
   read(request: ReadRequest): Promise<ReadResult>;
   refresh(request?: RefreshRequest): Promise<RefreshResult>;
   doctor(request?: DoctorRequest): Promise<DoctorResult>;
+}
+
+export interface LifecycleSource {
+  kind: "local-import" | "standalone-archive";
+  location: string;
+  importedAt: string;
+  url?: string;
+  revision?: string;
+}
+
+export interface LifecycleDeployment {
+  deploymentId: string;
+  skillId: string;
+  targetId: string;
+  host: LifecycleHost;
+  scope: LifecycleScope;
+  root: string;
+  path: string;
+  method: "copy";
+  ownership: "stash";
+  treeHash: string;
+  deployedAt: string;
+}
+
+export interface ManagedSkillRecord {
+  schemaVersion: 1;
+  skillId: string;
+  name: string;
+  treeHash: string;
+  source: LifecycleSource;
+  compatibility: VendorCompatibility;
+  deployments: LifecycleDeployment[];
+  lastValidatedAt: string;
+}
+
+export interface LifecycleHostTarget {
+  host: LifecycleHost;
+  scope?: LifecycleScope;
+  root?: string;
+  workspace?: string;
+}
+
+export interface LifecycleInstallRequest {
+  source: string;
+  sourceUrl?: string;
+  revision?: string;
+}
+
+export interface LifecycleArchiveRequest {
+  source: string;
+  target: LifecycleHostTarget;
+  sourceUrl?: string;
+  revision?: string;
+}
+
+export interface LifecycleActivateRequest {
+  name: string;
+  target: LifecycleHostTarget;
+}
+
+export interface LifecycleDeactivateRequest {
+  name: string;
+  target: LifecycleHostTarget;
+}
+
+export interface LifecycleStatusRequest {
+  name?: string;
+}
+
+export interface LifecycleMutationResult {
+  status:
+    | "stored"
+    | "deployed"
+    | "deactivated"
+    | "already-stored"
+    | "already-deployed";
+  name: string;
+  skillId: string;
+  managedPath: string;
+  treeHash: string;
+  deployment?: LifecycleDeployment;
+  reloadRequired?: boolean;
+  warning?: string;
+}
+
+export interface LifecycleSkillStatus {
+  skillId: string;
+  name: string;
+  managedPath: string;
+  store: {
+    state: "stored" | "missing";
+    integrity: "verified" | "drifted" | "unknown";
+    expectedTreeHash: string;
+    actualTreeHash?: string;
+  };
+  source: LifecycleSource;
+  deployments: Array<
+    LifecycleDeployment & {
+      state: "deployed" | "missing" | "drifted";
+      integrity: "verified" | "drifted" | "unknown";
+      actualTreeHash?: string;
+      hostObservation: {
+        override: "unknown";
+        discovery: "present" | "absent" | "unknown";
+        refresh: "live" | "restart-required" | "unknown";
+      };
+    }
+  >;
+}
+
+export interface LifecycleStatusResult {
+  status: "ok" | "not-found";
+  managedRoot: string;
+  skills: LifecycleSkillStatus[];
+}
+
+export interface StashLifecycle {
+  install(request: LifecycleInstallRequest): Promise<LifecycleMutationResult>;
+  archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;
+  activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
+  deactivate(
+    request: LifecycleDeactivateRequest,
+  ): Promise<LifecycleMutationResult>;
+  status(request?: LifecycleStatusRequest): Promise<LifecycleStatusResult>;
 }
 
 export class StashError extends Error {

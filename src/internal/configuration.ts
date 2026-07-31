@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import type {
@@ -9,7 +9,11 @@ import type {
   TrustState,
 } from "../types.js";
 import { StashError } from "../types.js";
-import { platformCachePath, platformConfigPath } from "./util.js";
+import {
+  platformCachePath,
+  platformConfigPath,
+  platformManagedPath,
+} from "./util.js";
 
 const DEFAULTS: StashDefaults = {
   pageSize: 40,
@@ -120,16 +124,23 @@ export async function loadConfiguration(
   const cacheDir = path.resolve(options.cacheDir ?? platformCachePath());
 
   if (options.catalogs) {
-    const catalogs = options.catalogs.map((catalog) => ({
+    let catalogs = options.catalogs.map((catalog) => ({
       ...catalog,
       root: path.resolve(catalog.root),
     }));
+    const managedRoot = options.managedRoot
+      ? path.resolve(options.managedRoot)
+      : undefined;
+    if (managedRoot) {
+      catalogs = await includeManagedCatalog(catalogs, managedRoot);
+    }
     validateUniqueCatalogIds(catalogs);
     return {
       configuration: {
         version: 1,
         catalogs,
         defaults: parseDefaults(undefined, options.defaults),
+        ...(managedRoot ? { managedRoot } : {}),
       },
       cacheDir,
     };
@@ -148,23 +159,35 @@ export async function loadConfiguration(
         5,
       );
     }
-    if (!Array.isArray(parsed.catalogs)) {
+    if (parsed.catalogs !== undefined && !Array.isArray(parsed.catalogs)) {
       throw new StashError(
         "invalid-config",
-        `Config "${configPath}" must define a catalogs array.`,
+        `Config "${configPath}" catalogs must be an array.`,
         2,
       );
     }
     const baseDir = path.dirname(configPath);
-    const catalogs = parsed.catalogs.map((catalog, index) =>
+    let catalogs = (Array.isArray(parsed.catalogs) ? parsed.catalogs : []).map((catalog, index) =>
       parseCatalog(catalog, baseDir, index),
     );
+    const configuredManagedRoot =
+      typeof parsed.managedRoot === "string" && parsed.managedRoot.trim()
+        ? path.resolve(baseDir, parsed.managedRoot)
+        : undefined;
+    const managedRoot = path.resolve(
+      options.managedRoot ??
+        process.env.STASH_MANAGED_HOME ??
+        configuredManagedRoot ??
+        platformManagedPath(),
+    );
+    catalogs = await includeManagedCatalog(catalogs, managedRoot);
     validateUniqueCatalogIds(catalogs);
     return {
       configuration: {
         version: 1,
         catalogs,
         defaults: parseDefaults(parsed.defaults, options.defaults),
+        managedRoot,
       },
       cacheDir,
       configPath,
@@ -186,30 +209,109 @@ export async function loadConfiguration(
     }
   }
 
+  const managedRoot = path.resolve(
+    options.managedRoot ??
+      process.env.STASH_MANAGED_HOME ??
+      platformManagedPath(),
+  );
+
   if (process.env.STASH_HOME) {
+    const catalogs = await includeManagedCatalog(
+      [
+        {
+          id: "default",
+          root: path.resolve(process.env.STASH_HOME),
+          enabled: true,
+          trust: "unreviewed",
+          followSymlinks: false,
+        },
+      ],
+      managedRoot,
+    );
     return {
       configuration: {
         version: 1,
-        catalogs: [
-          {
-            id: "default",
-            root: path.resolve(process.env.STASH_HOME),
-            enabled: true,
-            trust: "unreviewed",
-            followSymlinks: false,
-          },
-        ],
+        catalogs,
         defaults: parseDefaults(undefined, options.defaults),
+        managedRoot,
       },
       cacheDir,
     };
   }
 
-  throw new StashError(
-    "config-not-found",
-    `Stash config was not found at "${configPath}". Set STASH_CONFIG, STASH_HOME, or pass --config.`,
-    2,
-  );
+  if (explicitConfig) {
+    throw new StashError(
+      "config-not-found",
+      `Stash config was not found at "${configPath}".`,
+      2,
+    );
+  }
+
+  const catalogs = await includeManagedCatalog([], managedRoot);
+  return {
+    configuration: {
+      version: 1,
+      catalogs,
+      defaults: parseDefaults(undefined, options.defaults),
+      managedRoot,
+    },
+    cacheDir,
+  };
+}
+
+async function includeManagedCatalog(
+  catalogs: CatalogRegistration[],
+  managedRoot: string,
+): Promise<CatalogRegistration[]> {
+  if (catalogs.some((catalog) => catalog.id === "managed")) {
+    throw new StashError(
+      "invalid-config",
+      'Catalog id "managed" is reserved for the Stash-managed store.',
+      2,
+    );
+  }
+  const normalizedManagedRoot = path.resolve(managedRoot);
+  if (
+    catalogs.some((catalog) => {
+      const normalizedCatalogRoot = path.resolve(catalog.root);
+      return process.platform === "win32"
+        ? normalizedCatalogRoot.toLocaleLowerCase("und") ===
+            normalizedManagedRoot.toLocaleLowerCase("und")
+        : normalizedCatalogRoot === normalizedManagedRoot;
+    })
+  ) {
+    return catalogs;
+  }
+  try {
+    const info = await stat(managedRoot);
+    if (!info.isDirectory()) {
+      throw new StashError(
+        "invalid-config",
+        `Managed root is not a directory: "${managedRoot}".`,
+        2,
+      );
+    }
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code === "ENOENT") {
+      return catalogs;
+    }
+    throw error;
+  }
+  return [
+    ...catalogs,
+    {
+      id: "managed",
+      root: managedRoot,
+      enabled: true,
+      trust: "unreviewed",
+      followSymlinks: false,
+      compatibility: ["codex", "claude-code", "antigravity"],
+    },
+  ];
 }
 
 function validateUniqueCatalogIds(catalogs: CatalogRegistration[]): void {
