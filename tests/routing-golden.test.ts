@@ -106,6 +106,31 @@ examples:
 `,
     },
     {
+      group: "cadence-tools",
+      name: "timbre-synthesizer",
+      description: "Synthesize timbre cadence.",
+    },
+    {
+      group: "studio",
+      name: "cadence-synthesizer",
+      description: "Synthesize timbre cadence.",
+    },
+    {
+      group: "cadence-tools",
+      name: "synthesis-previews",
+      description: "Synthesize timbre previews.",
+    },
+    {
+      group: "cadence-tools",
+      name: "discouraged-synthesizer",
+      description: "Synthesize timbre cadence.",
+      sidecar: `schemaVersion: 1
+examples:
+  negative:
+    - synthesize timbre cadence
+`,
+    },
+    {
       group: "review",
       name: "database-migration-review",
       description: "Review database migrations for correctness and safety.",
