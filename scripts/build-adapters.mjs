@@ -12,6 +12,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const adapters = path.join(root, "adapters");
 const sourceSkill = path.join(root, "skills", "stash");
 const sourceSkillFile = path.join(sourceSkill, "SKILL.md");
+const packageManifest = JSON.parse(
+  await readFile(path.join(root, "package.json"), "utf8"),
+);
+if (typeof packageManifest.version !== "string") {
+  throw new Error("package.json must define a string version.");
+}
+const packageVersion = packageManifest.version;
 const sourceBody = await readFile(sourceSkillFile, "utf8");
 const frontmatterMatch = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/u.exec(sourceBody);
 
@@ -40,6 +47,9 @@ function withInvocation(value, invocation) {
   return value.replaceAll("$stash", invocation);
 }
 
+await rm(adapters, { recursive: true, force: true });
+await mkdir(adapters, { recursive: true });
+
 const codexRoot = path.join(adapters, "codex");
 await copySkill(path.join(codexRoot, "skills", "stash"));
 await cp(
@@ -59,7 +69,7 @@ await writeFile(
 );
 await writeJson(path.join(claudeRoot, ".claude-plugin", "plugin.json"), {
   name: "stash",
-  version: "0.1.0",
+  version: packageVersion,
   description:
     "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
   author: { name: "dd3ok", url: "https://github.com/dd3ok" },

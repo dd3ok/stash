@@ -27,7 +27,7 @@ interface SearchResult {
   expandedTerms: string[];
 }
 
-export const ROUTING_PROFILE_VERSION = 2 as const;
+export const ROUTING_PROFILE_VERSION = 3 as const;
 
 const FIELD_WEIGHTS = {
   name: 6,
@@ -200,6 +200,31 @@ function scoreRecord(
   return { score, matchedTerms, matchedKinds, reasons };
 }
 
+function normalizedTerms(value: string): string[] {
+  const normalized = normalizeText(value);
+  return normalized ? normalized.split(/\s+/u) : [];
+}
+
+function containsTermSequence(haystack: string[], needle: string[]): boolean {
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false;
+  }
+  return haystack.some(
+    (_, start) =>
+      start + needle.length <= haystack.length &&
+      needle.every((term, offset) => haystack[start + offset] === term),
+  );
+}
+
+function hasTermBoundaryMatch(left: string, right: string): boolean {
+  const leftTerms = normalizedTerms(left);
+  const rightTerms = normalizedTerms(right);
+  return (
+    containsTermSequence(leftTerms, rightTerms) ||
+    containsTermSequence(rightTerms, leftTerms)
+  );
+}
+
 function hasPhraseMatch(record: SkillRecord, query: string): {
   matched: boolean;
   reason?: RelevanceReason;
@@ -214,7 +239,7 @@ function hasPhraseMatch(record: SkillRecord, query: string): {
   for (const alias of record.aliases) {
     if (
       compactText(alias) === compactQuery ||
-      compactText(alias).includes(compactQuery)
+      hasTermBoundaryMatch(alias, query)
     ) {
       return { matched: true, reason: { kind: "alias", value: alias } };
     }
@@ -232,8 +257,7 @@ function hasPhraseMatch(record: SkillRecord, query: string): {
     }
   }
   if (
-    compactText(record.name).includes(compactQuery) ||
-    compactQuery.includes(compactText(record.name))
+    hasTermBoundaryMatch(record.name, query)
   ) {
     return { matched: true, reason: { kind: "name", value: record.name } };
   }
@@ -293,7 +317,7 @@ function classifyCandidate(
         scored.matchedKinds.has("description")
       ));
   const evidenceAdjustedThreshold = denseDescriptionEvidence
-    ? materialScoreThreshold * 0.6
+    ? materialScoreThreshold * 0.58
     : scored.matchedTerms.size >= 2 &&
         scored.matchedKinds.size >= 2 &&
         highPriorityMatch(scored.matchedKinds)

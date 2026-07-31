@@ -1,5 +1,5 @@
 {
-  "name": "dd3ok-agent-skills-stash",
+  "name": "dd3ok-stash",
   "owner": {
     "name": "dd3ok",
     "url": "https://github.com/dd3ok"
@@ -9,7 +9,7 @@
       "name": "stash",
       "source": "./adapters/claude-code",
       "description": "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "license": "MIT",
       "strict": true
     }

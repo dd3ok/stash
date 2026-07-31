@@ -1,8 +1,8 @@
-# Agent Skills Stash
+# Stash
 
 [English](README.md) | 한국어
 
-Agent Skills Stash는 `$stash`로 호출합니다. 자주 사용하지 않는
+Stash는 `$stash`로 호출합니다. 자주 사용하지 않는
 [`SKILL.md`](https://agentskills.io) 패키지를 제품의 기본 검색 경로 밖에
 두고, 사용자가 명시적으로 호출하면 정확한 이름으로 스킬을 열거나 작업
 내용으로 로컬 보관함을 검색합니다.

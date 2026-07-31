@@ -1,8 +1,8 @@
-# Agent Skills Stash
+# Stash
 
 English | [한국어](README.ko.md)
 
-Agent Skills Stash, invoked as `$stash`, keeps infrequently used
+Stash, invoked as `$stash`, keeps infrequently used
 [`SKILL.md`](https://agentskills.io) packages outside the host's normal
 discovery path. Invoke it explicitly to open a skill by exact name or search
 the local library by task.

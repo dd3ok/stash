@@ -3,7 +3,7 @@ name: stash
 description: Search a separate local Agent Skills library by exact name, source, or task and load only the selected SKILL.md instructions. Use only when the user explicitly invokes `stash` to open an exact stored skill, apply it to a task, list the library, list skills from an author or repository, or find every materially relevant stored skill. Do not invoke Stash implicitly for ordinary work.
 ---
 
-# Agent Skills Stash
+# Stash
 
 Use the bundled CLI to search and read a separate local Agent Skills library. Keep skills intended for normal host discovery and all skill lifecycle management outside this workflow.
 

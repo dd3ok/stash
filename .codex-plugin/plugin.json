@@ -1,6 +1,6 @@
 {
   "name": "stash",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One explicit doorway to a local Agent Skills library—search by name or task and load only the selected SKILL.md.",
   "author": {
     "name": "dd3ok",
@@ -23,7 +23,7 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Agent Skills Stash",
+    "displayName": "Stash",
     "shortDescription": "Open local Agent Skills only when requested.",
     "longDescription": "Keep a large local Agent Skills library behind one explicit entry point. Search by exact name or task, then load only the selected SKILL.md instructions and required resources.",
     "developerName": "dd3ok",

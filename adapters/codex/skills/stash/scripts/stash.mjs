@@ -8251,7 +8251,7 @@ async function acquireLock(lockPath) {
 }
 
 // src/internal/search.ts
-var ROUTING_PROFILE_VERSION = 2;
+var ROUTING_PROFILE_VERSION = 3;
 var FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -8380,6 +8380,23 @@ function scoreRecord(prepared, totalRecords, frequenciesByDocument, queryTerms) 
   score *= negativePenalty(prepared.record, queryTerms);
   return { score, matchedTerms, matchedKinds, reasons };
 }
+function normalizedTerms(value) {
+  const normalized = normalizeText(value);
+  return normalized ? normalized.split(/\s+/u) : [];
+}
+function containsTermSequence(haystack, needle) {
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false;
+  }
+  return haystack.some(
+    (_, start) => start + needle.length <= haystack.length && needle.every((term, offset) => haystack[start + offset] === term)
+  );
+}
+function hasTermBoundaryMatch(left, right) {
+  const leftTerms = normalizedTerms(left);
+  const rightTerms = normalizedTerms(right);
+  return containsTermSequence(leftTerms, rightTerms) || containsTermSequence(rightTerms, leftTerms);
+}
 function hasPhraseMatch(record, query) {
   const compactQuery = compactText(query);
   if (!compactQuery) {
@@ -8389,7 +8406,7 @@ function hasPhraseMatch(record, query) {
     return { matched: true, reason: { kind: "name", value: query } };
   }
   for (const alias of record.aliases) {
-    if (compactText(alias) === compactQuery || compactText(alias).includes(compactQuery)) {
+    if (compactText(alias) === compactQuery || hasTermBoundaryMatch(alias, query)) {
       return { matched: true, reason: { kind: "alias", value: alias } };
     }
   }
@@ -8402,7 +8419,7 @@ function hasPhraseMatch(record, query) {
       return { matched: true, reason: { kind: "source", value: source } };
     }
   }
-  if (compactText(record.name).includes(compactQuery) || compactQuery.includes(compactText(record.name))) {
+  if (hasTermBoundaryMatch(record.name, query)) {
     return { matched: true, reason: { kind: "name", value: record.name } };
   }
   return { matched: false };
@@ -8429,7 +8446,7 @@ function classifyCandidate(prepared, totalRecords, frequenciesByDocument, query,
   }
   const denseDescriptionEvidence = scored.matchedTerms.size >= 3 && scored.matchedKinds.size === 1 && scored.matchedKinds.has("description");
   const materialEvidence = scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) || denseDescriptionEvidence || queryTerms.length === 1 && highPriorityMatch(scored.matchedKinds) && !(scored.matchedKinds.size === 1 && scored.matchedKinds.has("description"));
-  const evidenceAdjustedThreshold = denseDescriptionEvidence ? materialScoreThreshold * 0.6 : scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) ? materialScoreThreshold * 0.75 : materialScoreThreshold;
+  const evidenceAdjustedThreshold = denseDescriptionEvidence ? materialScoreThreshold * 0.58 : scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) ? materialScoreThreshold * 0.75 : materialScoreThreshold;
   if (materialEvidence && scored.score >= evidenceAdjustedThreshold) {
     return {
       record,
