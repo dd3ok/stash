@@ -1,5 +1,5 @@
 export const RESULT_SCHEMA_VERSION = 1 as const;
-export const INDEX_SCHEMA_VERSION = 1 as const;
+export const INDEX_SCHEMA_VERSION = 2 as const;
 
 export type Vendor = "codex" | "claude-code" | "antigravity";
 export type CompatibilityState = "supported" | "partial" | "unsupported" | "unknown";
@@ -13,6 +13,8 @@ export interface VendorCompatibility {
 }
 
 export interface CatalogSource {
+  id?: string;
+  displayName?: string;
   url?: string;
   revision?: string;
   license?: string;
@@ -93,29 +95,29 @@ export interface CreateStashCatalogOptions {
   now?: () => number;
 }
 
+export interface ResolveFilters {
+  catalogIds?: string[];
+  sources?: string[];
+  group?: string;
+}
+
 export type ResolveRequest =
-  | {
+  | (ResolveFilters & {
       kind: "exact";
       name: string;
-      catalogIds?: string[];
-      group?: string;
-    }
-  | {
+    })
+  | (ResolveFilters & {
       kind: "search";
       query: string;
-      catalogIds?: string[];
-      group?: string;
       cursor?: string;
       pageSize?: number;
       includePossible?: boolean;
-    }
-  | {
+    })
+  | (ResolveFilters & {
       kind: "list";
-      catalogIds?: string[];
-      group?: string;
       cursor?: string;
       pageSize?: number;
-    };
+    });
 
 export interface RelevanceReason {
   kind:
@@ -125,6 +127,7 @@ export interface RelevanceReason {
     | "tag"
     | "description"
     | "example"
+    | "source"
     | "typo";
   value: string;
 }
@@ -137,6 +140,7 @@ export interface ResolvedSkill {
   description: string;
   compatibility: VendorCompatibility;
   trust: TrustState;
+  source?: CatalogSource;
   contentHash: string;
   relevance?: {
     tier: RelevanceTier;

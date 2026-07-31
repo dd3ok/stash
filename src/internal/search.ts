@@ -8,6 +8,7 @@ import {
   compactDescription,
   compactText,
   jaccard,
+  normalizeSourceIdentity,
   normalizeText,
   tokenize,
   trigrams,
@@ -26,6 +27,8 @@ interface SearchResult {
   expandedTerms: string[];
 }
 
+export const ROUTING_PROFILE_VERSION = 4 as const;
+
 const FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -33,6 +36,7 @@ const FIELD_WEIGHTS = {
   tag: 3,
   example: 2,
   description: 1.5,
+  source: 6,
   group: 0.5,
 } as const;
 
@@ -70,6 +74,11 @@ function fieldsFor(record: SkillRecord): Field[] {
       kind: "description",
       weight: FIELD_WEIGHTS.description,
       values: [record.description],
+    },
+    {
+      kind: "source",
+      weight: FIELD_WEIGHTS.source,
+      values: record.source.id ? [record.source.id] : [],
     },
     {
       kind: "group",
@@ -154,11 +163,13 @@ function scoreRecord(
   score: number;
   matchedTerms: Set<string>;
   matchedKinds: Set<Field["kind"]>;
+  descriptionMatchedTerms: Set<string>;
   reasons: RelevanceReason[];
 } {
   let score = 0;
   const matchedTerms = new Set<string>();
   const matchedKinds = new Set<Field["kind"]>();
+  const descriptionMatchedTerms = new Set<string>();
   const reasons: RelevanceReason[] = [];
   const seenReason = new Set<string>();
 
@@ -177,6 +188,9 @@ function scoreRecord(
       score += termIdf * ((weightedTf * 2.2) / (weightedTf + 1.2));
       matchedTerms.add(term);
       matchedKinds.add(field.kind);
+      if (field.kind === "description") {
+        descriptionMatchedTerms.add(term);
+      }
       if (field.kind !== "group") {
         const reasonKey = `${field.kind}:${term}`;
         if (!seenReason.has(reasonKey)) {
@@ -188,7 +202,38 @@ function scoreRecord(
   }
 
   score *= negativePenalty(prepared.record, queryTerms);
-  return { score, matchedTerms, matchedKinds, reasons };
+  return {
+    score,
+    matchedTerms,
+    matchedKinds,
+    descriptionMatchedTerms,
+    reasons,
+  };
+}
+
+function normalizedTerms(value: string): string[] {
+  const normalized = normalizeText(value);
+  return normalized ? normalized.split(/\s+/u) : [];
+}
+
+function containsTermSequence(haystack: string[], needle: string[]): boolean {
+  if (needle.length === 0 || needle.length > haystack.length) {
+    return false;
+  }
+  return haystack.some(
+    (_, start) =>
+      start + needle.length <= haystack.length &&
+      needle.every((term, offset) => haystack[start + offset] === term),
+  );
+}
+
+function hasTermBoundaryMatch(left: string, right: string): boolean {
+  const leftTerms = normalizedTerms(left);
+  const rightTerms = normalizedTerms(right);
+  return (
+    containsTermSequence(leftTerms, rightTerms) ||
+    containsTermSequence(rightTerms, leftTerms)
+  );
 }
 
 function hasPhraseMatch(record: SkillRecord, query: string): {
@@ -205,14 +250,25 @@ function hasPhraseMatch(record: SkillRecord, query: string): {
   for (const alias of record.aliases) {
     if (
       compactText(alias) === compactQuery ||
-      compactText(alias).includes(compactQuery)
+      hasTermBoundaryMatch(alias, query)
     ) {
       return { matched: true, reason: { kind: "alias", value: alias } };
     }
   }
+  const normalizedSourceQuery = normalizeSourceIdentity(query);
+  for (const source of [
+    record.source.id,
+    record.source.displayName,
+  ]) {
+    if (
+      source &&
+      normalizeSourceIdentity(source) === normalizedSourceQuery
+    ) {
+      return { matched: true, reason: { kind: "source", value: source } };
+    }
+  }
   if (
-    compactText(record.name).includes(compactQuery) ||
-    compactQuery.includes(compactText(record.name))
+    hasTermBoundaryMatch(record.name, query)
   ) {
     return { matched: true, reason: { kind: "name", value: record.name } };
   }
@@ -257,9 +313,7 @@ function classifyCandidate(
   }
 
   const denseDescriptionEvidence =
-    scored.matchedTerms.size >= 3 &&
-    scored.matchedKinds.size === 1 &&
-    scored.matchedKinds.has("description");
+    scored.descriptionMatchedTerms.size >= 3;
   const materialEvidence =
     (scored.matchedTerms.size >= 2 &&
       scored.matchedKinds.size >= 2 &&
@@ -272,7 +326,7 @@ function classifyCandidate(
         scored.matchedKinds.has("description")
       ));
   const evidenceAdjustedThreshold = denseDescriptionEvidence
-    ? materialScoreThreshold * 0.6
+    ? materialScoreThreshold * 0.58
     : scored.matchedTerms.size >= 2 &&
         scored.matchedKinds.size >= 2 &&
         highPriorityMatch(scored.matchedKinds)
@@ -392,7 +446,7 @@ export function searchRecords(
         record,
         prepared.length,
         frequenciesByDocument,
-        normalizedQuery,
+        query,
         queryTerms,
         materialScoreThreshold,
       ),
@@ -420,16 +474,8 @@ export function searchRecords(
 export function toResolvedSkill(
   candidate: SearchCandidate,
 ): ResolvedSkill {
-  const record = candidate.record;
   return {
-    ref: record.ref,
-    catalogId: record.catalogId,
-    ...(record.group ? { group: record.group } : {}),
-    name: record.name,
-    description: compactDescription(record.description),
-    compatibility: record.compatibility,
-    trust: record.trust,
-    contentHash: record.contentHash,
+    ...toListedSkill(candidate.record),
     relevance: {
       tier: candidate.tier,
       score: Number(candidate.score.toFixed(4)),
@@ -447,6 +493,9 @@ export function toListedSkill(record: SkillRecord): ResolvedSkill {
     description: compactDescription(record.description),
     compatibility: record.compatibility,
     trust: record.trust,
+    ...(Object.keys(record.source).length > 0
+      ? { source: record.source }
+      : {}),
     contentHash: record.contentHash,
   };
 }

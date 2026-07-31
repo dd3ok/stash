@@ -28,6 +28,7 @@ import {
   writeFreshIndex,
 } from "./internal/catalog-index.js";
 import {
+  ROUTING_PROFILE_VERSION,
   searchRecords,
   toListedSkill,
   toResolvedSkill,
@@ -40,6 +41,8 @@ import {
   isPathInside,
   mediaTypeFor,
   normalizeRelativePath,
+  normalizeSourceIdentity,
+  normalizeSourceUrl,
   normalizeText,
   sha256,
   sha256File,
@@ -47,6 +50,7 @@ import {
 
 interface CursorPayload extends Record<string, unknown> {
   version: 1;
+  routingProfileVersion: typeof ROUTING_PROFILE_VERSION;
   fingerprint: string;
   requestHash: string;
   offset: number;
@@ -57,6 +61,52 @@ interface LoadedIndexes {
   registrations: CatalogRegistration[];
   warnings: CatalogIndex["warnings"];
   fingerprint: string;
+}
+
+interface NormalizedSourceSelector {
+  identity: string;
+  url?: string;
+}
+
+function normalizeSourceSelector(source: string): NormalizedSourceSelector {
+  const url = normalizeSourceUrl(source);
+  return {
+    identity: normalizeSourceIdentity(source),
+    ...(url ? { url } : {}),
+  };
+}
+
+function matchesSource(
+  record: SkillRecord,
+  selectors: NormalizedSourceSelector[],
+): boolean {
+  const identities = [record.source.id, record.source.displayName]
+    .filter((value): value is string => value !== undefined)
+    .map(normalizeSourceIdentity);
+  const sourceUrl = record.source.url
+    ? normalizeSourceUrl(record.source.url)
+    : undefined;
+  return selectors.some(
+    (selector) =>
+      identities.includes(selector.identity) ||
+      (selector.url !== undefined && selector.url === sourceUrl),
+  );
+}
+
+function sourceSortKey(record: SkillRecord): string {
+  if (record.source.id) {
+    return `0:${normalizeSourceIdentity(record.source.id)}`;
+  }
+  if (record.source.displayName) {
+    return `1:${normalizeSourceIdentity(record.source.displayName)}`;
+  }
+  if (record.source.url) {
+    return `2:${
+      normalizeSourceUrl(record.source.url) ??
+      normalizeSourceIdentity(record.source.url)
+    }`;
+  }
+  return "3:";
 }
 
 class StashCatalogImplementation implements StashCatalog {
@@ -151,9 +201,18 @@ class StashCatalogImplementation implements StashCatalog {
     }
 
     const group = request.group ? normalizeText(request.group) : undefined;
+    const sourceSelectors = (request.sources ?? []).map(
+      normalizeSourceSelector,
+    );
+    const hasSourceFilter = (request.sources?.length ?? 0) > 0;
     const records = loaded.indexes
       .flatMap((index) => index.records)
       .filter((record) => record.trust !== "quarantined")
+      .filter(
+        (record) =>
+          !hasSourceFilter ||
+          matchesSource(record, sourceSelectors),
+      )
       .filter(
         (record) =>
           !group ||
@@ -236,6 +295,8 @@ class StashCatalogImplementation implements StashCatalog {
   ): ResolveResult {
     const sorted = [...records].sort(
       (left, right) =>
+        sourceSortKey(left).localeCompare(sourceSortKey(right), "en") ||
+        left.catalogId.localeCompare(right.catalogId, "en") ||
         (left.group ?? "").localeCompare(right.group ?? "", "en") ||
         left.name.localeCompare(right.name, "en") ||
         left.ref.localeCompare(right.ref, "en"),
@@ -244,6 +305,7 @@ class StashCatalogImplementation implements StashCatalog {
       JSON.stringify({
         kind: request.kind,
         catalogIds: request.catalogIds ?? [],
+        sources: request.sources ?? [],
         group: request.group ?? "",
       }),
     );
@@ -299,6 +361,7 @@ class StashCatalogImplementation implements StashCatalog {
         kind: request.kind,
         query: normalizeText(request.query),
         catalogIds: request.catalogIds ?? [],
+        sources: request.sources ?? [],
         group: request.group ?? "",
         includePossible: request.includePossible ?? false,
       }),
@@ -353,6 +416,7 @@ class StashCatalogImplementation implements StashCatalog {
       if (
         !payload ||
         payload.version !== 1 ||
+        payload.routingProfileVersion !== ROUTING_PROFILE_VERSION ||
         payload.fingerprint !== fingerprint ||
         payload.requestHash !== requestHash ||
         !Number.isInteger(payload.offset) ||
@@ -371,6 +435,7 @@ class StashCatalogImplementation implements StashCatalog {
         ? {
             nextCursor: encodeCursor({
               version: 1,
+              routingProfileVersion: ROUTING_PROFILE_VERSION,
               fingerprint,
               requestHash,
               offset: nextOffset,
@@ -568,7 +633,11 @@ class StashCatalogImplementation implements StashCatalog {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const index = await writeFreshIndex(catalog, this.#cacheDir);
+        const index = await writeFreshIndex(
+          catalog,
+          this.#cacheDir,
+          this.#now,
+        );
         results.push({
           catalogId: catalog.id,
           indexed: index.records.length,
@@ -605,7 +674,7 @@ class StashCatalogImplementation implements StashCatalog {
     let failed = 0;
     for (const catalog of registrations) {
       try {
-        const scanned = await scanCatalog(catalog);
+        const scanned = await scanCatalog(catalog, this.#now);
         results.push({
           catalogId: catalog.id,
           root: scanned.index.root,

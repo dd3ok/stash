@@ -111,6 +111,8 @@ compatibility:
 trust:
   state: reviewed
 source:
+  id: example
+  displayName: Example Skills
   url: https://github.com/example/skill
   revision: 0123456789abcdef
   license: MIT
@@ -120,6 +122,14 @@ risk:
 ```
 
 Arrays stay in the sidecar because portable Agent Skills metadata does not guarantee arbitrary vendor-specific nested arrays in `SKILL.md`.
+
+Use a stable lowercase `source.id` to identify the author or upstream collection independently from storage and taxonomy:
+
+- `catalogId` identifies the configured local library;
+- `group` identifies the skill's functional category;
+- `source.id` identifies where the skill originated.
+
+This allows `personal:game-development/design-encounters` to remain in a personal catalog while `--source example`, `--source "Example Skills"`, or the recorded source URL selects it by provenance.
 
 ## Trust and source
 
@@ -132,7 +142,7 @@ Trust states:
 
 Trust never grants execution permission.
 
-Record source URL, immutable revision, license, and content hash before redistributing third-party skills.
+Record source ID, URL, immutable revision, license, and content hash before redistributing third-party skills.
 
 ## Validation
 

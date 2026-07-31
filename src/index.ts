@@ -7,6 +7,7 @@ export {
 export type {
   CatalogIndex,
   CatalogRegistration,
+  CatalogSource,
   CatalogWarning,
   CreateStashCatalogOptions,
   DoctorRequest,
@@ -15,6 +16,7 @@ export type {
   ReadResult,
   RefreshRequest,
   RefreshResult,
+  ResolveFilters,
   ResolveRequest,
   ResolveResult,
   ResolvedSkill,

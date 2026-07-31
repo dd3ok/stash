@@ -1,8 +1,8 @@
-# Agent Skills Stash
+# Stash
 
 English | [한국어](README.ko.md)
 
-Agent Skills Stash, invoked as `$stash`, keeps infrequently used
+Stash, invoked as `$stash`, keeps infrequently used
 [`SKILL.md`](https://agentskills.io) packages outside the host's normal
 discovery path. Invoke it explicitly to open a skill by exact name or search
 the local library by task.
@@ -71,7 +71,10 @@ Try the sample library:
 node skills/stash/scripts/stash.mjs doctor --config examples/config.yaml
 node skills/stash/scripts/stash.mjs exact design-system --config examples/config.yaml --json
 node skills/stash/scripts/stash.mjs search "frontend component tokens" --config examples/config.yaml --json
+node skills/stash/scripts/stash.mjs list --source example --config examples/config.yaml --json
 ```
+
+Add a stable `source.id` and optional repository display name or URL to a skill's `stash.meta.yaml`. `--source` then accepts any of those exact identities without changing the skill's catalog or group.
 
 Configure your library:
 

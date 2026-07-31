@@ -53,7 +53,7 @@ Claude Code can add it as a local marketplace:
 
 ```text
 /plugin marketplace add .
-/plugin install stash@dd3ok-agent-skills-stash
+/plugin install stash@dd3ok-stash
 /reload-plugins
 ```
 
