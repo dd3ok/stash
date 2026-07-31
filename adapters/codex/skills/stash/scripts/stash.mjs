@@ -8251,7 +8251,7 @@ async function acquireLock(lockPath) {
 }
 
 // src/internal/search.ts
-var ROUTING_PROFILE_VERSION = 3;
+var ROUTING_PROFILE_VERSION = 4;
 var FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -8351,6 +8351,7 @@ function scoreRecord(prepared, totalRecords, frequenciesByDocument, queryTerms) 
   let score = 0;
   const matchedTerms = /* @__PURE__ */ new Set();
   const matchedKinds = /* @__PURE__ */ new Set();
+  const descriptionMatchedTerms = /* @__PURE__ */ new Set();
   const reasons = [];
   const seenReason = /* @__PURE__ */ new Set();
   for (const field of prepared.fields) {
@@ -8368,6 +8369,9 @@ function scoreRecord(prepared, totalRecords, frequenciesByDocument, queryTerms) 
       score += termIdf * (weightedTf * 2.2 / (weightedTf + 1.2));
       matchedTerms.add(term);
       matchedKinds.add(field.kind);
+      if (field.kind === "description") {
+        descriptionMatchedTerms.add(term);
+      }
       if (field.kind !== "group") {
         const reasonKey = `${field.kind}:${term}`;
         if (!seenReason.has(reasonKey)) {
@@ -8378,7 +8382,13 @@ function scoreRecord(prepared, totalRecords, frequenciesByDocument, queryTerms) 
     }
   }
   score *= negativePenalty(prepared.record, queryTerms);
-  return { score, matchedTerms, matchedKinds, reasons };
+  return {
+    score,
+    matchedTerms,
+    matchedKinds,
+    descriptionMatchedTerms,
+    reasons
+  };
 }
 function normalizedTerms(value) {
   const normalized = normalizeText(value);
@@ -8444,7 +8454,7 @@ function classifyCandidate(prepared, totalRecords, frequenciesByDocument, query,
       reasons: phrase.reason ? [phrase.reason, ...scored.reasons].slice(0, 8) : scored.reasons.slice(0, 8)
     };
   }
-  const denseDescriptionEvidence = scored.matchedTerms.size >= 3 && scored.matchedKinds.size === 1 && scored.matchedKinds.has("description");
+  const denseDescriptionEvidence = scored.descriptionMatchedTerms.size >= 3;
   const materialEvidence = scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) || denseDescriptionEvidence || queryTerms.length === 1 && highPriorityMatch(scored.matchedKinds) && !(scored.matchedKinds.size === 1 && scored.matchedKinds.has("description"));
   const evidenceAdjustedThreshold = denseDescriptionEvidence ? materialScoreThreshold * 0.58 : scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) ? materialScoreThreshold * 0.75 : materialScoreThreshold;
   if (materialEvidence && scored.score >= evidenceAdjustedThreshold) {

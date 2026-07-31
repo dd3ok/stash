@@ -27,7 +27,7 @@ interface SearchResult {
   expandedTerms: string[];
 }
 
-export const ROUTING_PROFILE_VERSION = 3 as const;
+export const ROUTING_PROFILE_VERSION = 4 as const;
 
 const FIELD_WEIGHTS = {
   name: 6,
@@ -163,11 +163,13 @@ function scoreRecord(
   score: number;
   matchedTerms: Set<string>;
   matchedKinds: Set<Field["kind"]>;
+  descriptionMatchedTerms: Set<string>;
   reasons: RelevanceReason[];
 } {
   let score = 0;
   const matchedTerms = new Set<string>();
   const matchedKinds = new Set<Field["kind"]>();
+  const descriptionMatchedTerms = new Set<string>();
   const reasons: RelevanceReason[] = [];
   const seenReason = new Set<string>();
 
@@ -186,6 +188,9 @@ function scoreRecord(
       score += termIdf * ((weightedTf * 2.2) / (weightedTf + 1.2));
       matchedTerms.add(term);
       matchedKinds.add(field.kind);
+      if (field.kind === "description") {
+        descriptionMatchedTerms.add(term);
+      }
       if (field.kind !== "group") {
         const reasonKey = `${field.kind}:${term}`;
         if (!seenReason.has(reasonKey)) {
@@ -197,7 +202,13 @@ function scoreRecord(
   }
 
   score *= negativePenalty(prepared.record, queryTerms);
-  return { score, matchedTerms, matchedKinds, reasons };
+  return {
+    score,
+    matchedTerms,
+    matchedKinds,
+    descriptionMatchedTerms,
+    reasons,
+  };
 }
 
 function normalizedTerms(value: string): string[] {
@@ -302,9 +313,7 @@ function classifyCandidate(
   }
 
   const denseDescriptionEvidence =
-    scored.matchedTerms.size >= 3 &&
-    scored.matchedKinds.size === 1 &&
-    scored.matchedKinds.has("description");
+    scored.descriptionMatchedTerms.size >= 3;
   const materialEvidence =
     (scored.matchedTerms.size >= 2 &&
       scored.matchedKinds.size >= 2 &&

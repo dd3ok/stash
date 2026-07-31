@@ -21,7 +21,7 @@ It never invokes natural-language reranking.
 
 ## Discovery
 
-Current routing profile: `3`.
+Current routing profile: `4`.
 
 Discovery uses BM25F-style scoring with initial weights:
 
@@ -40,8 +40,8 @@ A score alone cannot make a result relevant. The evidence gate also requires:
 
 - whole-term phrase evidence in name/alias; or
 - multiple query terms across multiple fields with a high-priority field; or
-- at least three query terms in a description, above the dense-description
-  threshold; or
+- at least three distinct query terms in a description, above the
+  dense-description threshold, even when another field also matches; or
 - a single specific term in name, alias, intent, or tag.
 
 Single-term description-only and group-only generic matches remain `possible`.

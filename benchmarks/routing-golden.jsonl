@@ -6,7 +6,9 @@
 {"id":"broad-generic-term","kind":"search","query":"design","expectedRelevant":["design-game-encounters","design-system"]}
 {"id":"short-ui-term-respects-boundaries","kind":"search","query":"ui","expectedRelevant":["design-system","ui-craft"]}
 {"id":"short-go-term-abstains","kind":"search","query":"go","expectedRelevant":[]}
-{"id":"dense-description-three-term-material","kind":"search","query":"generate voice audio","expectedRelevant":["elevenlabs-tts"]}
+{"id":"dense-description-three-term-material","kind":"search","query":"generate voice audio","expectedRelevant":["elevenlabs-tts"],"expectedPossible":["media-options-guide","narration-workflows","recording-cleanup","waveform-previews"]}
+{"id":"dense-description-overlap-is-monotonic","kind":"search","query":"synthesize timbre cadence","expectedRelevant":["cadence-synthesizer","timbre-synthesizer"],"expectedPossible":["discouraged-synthesizer","synthesis-previews"]}
+{"id":"dense-description-overlap-no-match","kind":"search","query":"synthesize quantum fragrance","expectedRelevant":[]}
 {"id":"typo-fallback","kind":"search","query":"security-audi","expectedRelevant":["security-audit"]}
 {"id":"negative-example-demotion","kind":"search","query":"database migration review","expectedRelevant":["api-contract-review","database-migration-review"],"expectedFirst":"database-migration-review"}
 {"id":"source-id-discovers-all","kind":"search","query":"mengto","expectedRelevant":["create-brand-world","design-game-encounters"]}
