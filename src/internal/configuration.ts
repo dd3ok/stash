@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
 import type {
@@ -10,6 +10,7 @@ import type {
 } from "../types.js";
 import { StashError } from "../types.js";
 import {
+  isPathInside,
   platformCachePath,
   platformConfigPath,
   platformManagedPath,
@@ -270,17 +271,19 @@ async function includeManagedCatalog(
       2,
     );
   }
-  const normalizedManagedRoot = path.resolve(managedRoot);
-  if (
-    catalogs.some((catalog) => {
-      const normalizedCatalogRoot = path.resolve(catalog.root);
-      return process.platform === "win32"
-        ? normalizedCatalogRoot.toLocaleLowerCase("und") ===
-            normalizedManagedRoot.toLocaleLowerCase("und")
-        : normalizedCatalogRoot === normalizedManagedRoot;
-    })
-  ) {
-    return catalogs;
+  const canonicalManagedRoot = await canonicalPotentialPath(managedRoot);
+  for (const catalog of catalogs) {
+    const canonicalCatalogRoot = await canonicalPotentialPath(catalog.root);
+    if (
+      isPathInside(canonicalCatalogRoot, canonicalManagedRoot) ||
+      isPathInside(canonicalManagedRoot, canonicalCatalogRoot)
+    ) {
+      throw new StashError(
+        "invalid-config",
+        `Managed root must be separate from external catalog "${catalog.id}": "${managedRoot}" overlaps "${catalog.root}".`,
+        2,
+      );
+    }
   }
   try {
     const info = await stat(managedRoot);
@@ -312,6 +315,32 @@ async function includeManagedCatalog(
       compatibility: ["codex", "claude-code", "antigravity"],
     },
   ];
+}
+
+async function canonicalPotentialPath(input: string): Promise<string> {
+  const absolute = path.resolve(input);
+  const missingSegments: string[] = [];
+  let candidate = absolute;
+  while (true) {
+    try {
+      const canonical = await realpath(candidate);
+      return path.resolve(canonical, ...missingSegments.reverse());
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+      if (code !== "ENOENT") {
+        throw error;
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) {
+        return absolute;
+      }
+      missingSegments.push(path.basename(candidate));
+      candidate = parent;
+    }
+  }
 }
 
 function validateUniqueCatalogIds(catalogs: CatalogRegistration[]): void {

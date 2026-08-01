@@ -113,17 +113,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path7) {
-      const ctrl = callVisitor(key, node, visitor, path7);
+    function visit_(key, node, visitor, path9) {
+      const ctrl = callVisitor(key, node, visitor, path9);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path7, ctrl);
-        return visit_(key, ctrl, visitor, path7);
+        replaceNode(key, path9, ctrl);
+        return visit_(key, ctrl, visitor, path9);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path7 = Object.freeze(path7.concat(node));
+          path9 = Object.freeze(path9.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path7);
+            const ci = visit_(i, node.items[i], visitor, path9);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -134,13 +134,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path7 = Object.freeze(path7.concat(node));
-          const ck = visit_("key", node.key, visitor, path7);
+          path9 = Object.freeze(path9.concat(node));
+          const ck = visit_("key", node.key, visitor, path9);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path7);
+          const cv = visit_("value", node.value, visitor, path9);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -161,17 +161,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path7) {
-      const ctrl = await callVisitor(key, node, visitor, path7);
+    async function visitAsync_(key, node, visitor, path9) {
+      const ctrl = await callVisitor(key, node, visitor, path9);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path7, ctrl);
-        return visitAsync_(key, ctrl, visitor, path7);
+        replaceNode(key, path9, ctrl);
+        return visitAsync_(key, ctrl, visitor, path9);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path7 = Object.freeze(path7.concat(node));
+          path9 = Object.freeze(path9.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path7);
+            const ci = await visitAsync_(i, node.items[i], visitor, path9);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -182,13 +182,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path7 = Object.freeze(path7.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path7);
+          path9 = Object.freeze(path9.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path9);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path7);
+          const cv = await visitAsync_("value", node.value, visitor, path9);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -215,23 +215,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path7) {
+    function callVisitor(key, node, visitor, path9) {
       if (typeof visitor === "function")
-        return visitor(key, node, path7);
+        return visitor(key, node, path9);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path7);
+        return visitor.Map?.(key, node, path9);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path7);
+        return visitor.Seq?.(key, node, path9);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path7);
+        return visitor.Pair?.(key, node, path9);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path7);
+        return visitor.Scalar?.(key, node, path9);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path7);
+        return visitor.Alias?.(key, node, path9);
       return void 0;
     }
-    function replaceNode(key, path7, node) {
-      const parent = path7[path7.length - 1];
+    function replaceNode(key, path9, node) {
+      const parent = path9[path9.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -841,10 +841,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path7, value) {
+    function collectionFromPath(schema, path9, value) {
       let v = value;
-      for (let i = path7.length - 1; i >= 0; --i) {
-        const k = path7[i];
+      for (let i = path9.length - 1; i >= 0; --i) {
+        const k = path9[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -863,7 +863,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path7) => path7 == null || typeof path7 === "object" && !!path7[Symbol.iterator]().next().done;
+    var isEmptyPath = (path9) => path9 == null || typeof path9 === "object" && !!path9[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -893,11 +893,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path7, value) {
-        if (isEmptyPath(path7))
+      addIn(path9, value) {
+        if (isEmptyPath(path9))
           this.add(value);
         else {
-          const [key, ...rest] = path7;
+          const [key, ...rest] = path9;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -911,8 +911,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path7) {
-        const [key, ...rest] = path7;
+      deleteIn(path9) {
+        const [key, ...rest] = path9;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -926,8 +926,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path7, keepScalar) {
-        const [key, ...rest] = path7;
+      getIn(path9, keepScalar) {
+        const [key, ...rest] = path9;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -945,8 +945,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path7) {
-        const [key, ...rest] = path7;
+      hasIn(path9) {
+        const [key, ...rest] = path9;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -956,8 +956,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path7, value) {
-        const [key, ...rest] = path7;
+      setIn(path9, value) {
+        const [key, ...rest] = path9;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -3472,9 +3472,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path7, value) {
+      addIn(path9, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path7, value);
+          this.contents.addIn(path9, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3549,14 +3549,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path7) {
-        if (Collection.isEmptyPath(path7)) {
+      deleteIn(path9) {
+        if (Collection.isEmptyPath(path9)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path7) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path9) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3571,10 +3571,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path7, keepScalar) {
-        if (Collection.isEmptyPath(path7))
+      getIn(path9, keepScalar) {
+        if (Collection.isEmptyPath(path9))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path7, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path9, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3585,10 +3585,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path7) {
-        if (Collection.isEmptyPath(path7))
+      hasIn(path9) {
+        if (Collection.isEmptyPath(path9))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path7) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path9) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3605,13 +3605,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path7, value) {
-        if (Collection.isEmptyPath(path7)) {
+      setIn(path9, value) {
+        if (Collection.isEmptyPath(path9)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path7), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path9), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path7, value);
+          this.contents.setIn(path9, value);
         }
       }
       /**
@@ -5571,9 +5571,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path7) => {
+    visit.itemAtPath = (cst, path9) => {
       let item = cst;
-      for (const [field, index] of path7) {
+      for (const [field, index] of path9) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5582,23 +5582,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path7) => {
-      const parent = visit.itemAtPath(cst, path7.slice(0, -1));
-      const field = path7[path7.length - 1][0];
+    visit.parentCollection = (cst, path9) => {
+      const parent = visit.itemAtPath(cst, path9.slice(0, -1));
+      const field = path9[path9.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path7, item, visitor) {
-      let ctrl = visitor(item, path7);
+    function _visit(path9, item, visitor) {
+      let ctrl = visitor(item, path9);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path7.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path9.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5609,10 +5609,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path7);
+            ctrl = ctrl(item, path9);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path7) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path9) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7364,8 +7364,8 @@ var require_dist = __commonJS({
 });
 
 // src/stash-catalog.ts
-import { readFile as readFile4, realpath as realpath3, stat as stat4 } from "node:fs/promises";
-import path5 from "node:path";
+import { readFile as readFile5, realpath as realpath4, stat as stat4 } from "node:fs/promises";
+import path6 from "node:path";
 
 // src/types.ts
 var RESULT_SCHEMA_VERSION = 1;
@@ -7383,7 +7383,7 @@ var StashError = class extends Error {
 
 // src/internal/configuration.ts
 var import_yaml = __toESM(require_dist(), 1);
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path2 from "node:path";
 
 // src/internal/util.ts
@@ -7483,6 +7483,10 @@ function jaccard(left, right) {
 function isPathInside(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative === "" || !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
+}
+function pathIdentity(value) {
+  const normalized = path.resolve(value).normalize("NFKC");
+  return platform() === "win32" ? normalized.toLocaleLowerCase("und") : normalized;
 }
 function normalizeRelativePath(value) {
   if (!value || path.isAbsolute(value)) {
@@ -7818,12 +7822,16 @@ async function includeManagedCatalog(catalogs, managedRoot) {
       2
     );
   }
-  const normalizedManagedRoot = path2.resolve(managedRoot);
-  if (catalogs.some((catalog) => {
-    const normalizedCatalogRoot = path2.resolve(catalog.root);
-    return process.platform === "win32" ? normalizedCatalogRoot.toLocaleLowerCase("und") === normalizedManagedRoot.toLocaleLowerCase("und") : normalizedCatalogRoot === normalizedManagedRoot;
-  })) {
-    return catalogs;
+  const canonicalManagedRoot = await canonicalPotentialPath(managedRoot);
+  for (const catalog of catalogs) {
+    const canonicalCatalogRoot = await canonicalPotentialPath(catalog.root);
+    if (isPathInside(canonicalCatalogRoot, canonicalManagedRoot) || isPathInside(canonicalManagedRoot, canonicalCatalogRoot)) {
+      throw new StashError(
+        "invalid-config",
+        `Managed root must be separate from external catalog "${catalog.id}": "${managedRoot}" overlaps "${catalog.root}".`,
+        2
+      );
+    }
   }
   try {
     const info = await stat(managedRoot);
@@ -7853,6 +7861,28 @@ async function includeManagedCatalog(catalogs, managedRoot) {
     }
   ];
 }
+async function canonicalPotentialPath(input) {
+  const absolute = path2.resolve(input);
+  const missingSegments = [];
+  let candidate = absolute;
+  while (true) {
+    try {
+      const canonical = await realpath(candidate);
+      return path2.resolve(canonical, ...missingSegments.reverse());
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+      if (code !== "ENOENT") {
+        throw error;
+      }
+      const parent = path2.dirname(candidate);
+      if (parent === candidate) {
+        return absolute;
+      }
+      missingSegments.push(path2.basename(candidate));
+      candidate = parent;
+    }
+  }
+}
 function validateUniqueCatalogIds(catalogs) {
   const seen = /* @__PURE__ */ new Set();
   for (const catalog of catalogs) {
@@ -7874,7 +7904,7 @@ import {
   open,
   readFile as readFile2,
   readdir,
-  realpath,
+  realpath as realpath2,
   rename,
   stat as stat2,
   unlink,
@@ -8054,7 +8084,7 @@ async function discoverCandidates(catalog) {
   const warnings = [];
   let root;
   try {
-    root = await realpath(path3.resolve(catalog.root));
+    root = await realpath2(path3.resolve(catalog.root));
   } catch (error) {
     throw new StashError(
       "catalog-unavailable",
@@ -8077,7 +8107,7 @@ async function discoverCandidates(catalog) {
     if (depth > maxDepth) {
       return;
     }
-    const canonicalDirectory = await realpath(directory);
+    const canonicalDirectory = await realpath2(directory);
     if (visitedDirectories.has(canonicalDirectory)) {
       return;
     }
@@ -8130,7 +8160,7 @@ async function discoverCandidates(catalog) {
           });
           continue;
         }
-        const target = await realpath(entryPath);
+        const target = await realpath2(entryPath);
         if (!isPathInside(root, target)) {
           warnings.push({
             code: "symlink-escape",
@@ -8357,85 +8387,204 @@ async function acquireLock(lockPath) {
 
 // src/internal/managed-projection.ts
 import {
+  readFile as readFile4,
+  readdir as readdir3
+} from "node:fs/promises";
+import path5 from "node:path";
+
+// src/internal/tree-fingerprint.ts
+import {
   lstat,
   readFile as readFile3,
   readdir as readdir2,
-  realpath as realpath2,
+  realpath as realpath3,
   stat as stat3
 } from "node:fs/promises";
-import { platform as platform2 } from "node:os";
 import path4 from "node:path";
 var MAX_FILES = 1e4;
 var MAX_TOTAL_BYTES = 256 * 1024 * 1024;
-function pathIdentity(value) {
-  const normalized = path4.resolve(value).normalize("NFKC");
-  return platform2() === "win32" ? normalized.toLocaleLowerCase("und") : normalized;
+var WINDOWS_RESERVED_NAMES = /* @__PURE__ */ new Set([
+  "con",
+  "prn",
+  "aux",
+  "nul",
+  "com1",
+  "com2",
+  "com3",
+  "com4",
+  "com5",
+  "com6",
+  "com7",
+  "com8",
+  "com9",
+  "lpt1",
+  "lpt2",
+  "lpt3",
+  "lpt4",
+  "lpt5",
+  "lpt6",
+  "lpt7",
+  "lpt8",
+  "lpt9"
+]);
+var TreeFingerprintError = class extends Error {
+  failure;
+  relativePath;
+  detail;
+  constructor(failure, message, relativePath, detail) {
+    super(message);
+    this.name = "TreeFingerprintError";
+    this.failure = failure;
+    this.relativePath = relativePath;
+    this.detail = detail;
+  }
+};
+function validatePortableSegment(segment) {
+  if (!segment || /[. ]$/u.test(segment) || /[<>:"/\\|?*\u0000-\u001F\u007F]/u.test(segment)) {
+    throw new TreeFingerprintError(
+      "unsafe-path",
+      `Skill path segment is not portable: "${segment}".`,
+      segment
+    );
+  }
+  const base = segment.split(".", 1)[0]?.toLocaleLowerCase("und") ?? "";
+  if (WINDOWS_RESERVED_NAMES.has(base)) {
+    throw new TreeFingerprintError(
+      "unsafe-path",
+      `Skill path segment is reserved on Windows: "${segment}".`,
+      segment
+    );
+  }
 }
-function validRecord(value) {
+function portablePathKey(relativePath) {
+  return relativePath.normalize("NFKC").toLocaleLowerCase("und");
+}
+async function fingerprintTree(sourceRoot, capturePaths = /* @__PURE__ */ new Set()) {
+  const rootInput = path4.resolve(sourceRoot);
+  let rootInfo;
+  try {
+    rootInfo = await lstat(rootInput);
+  } catch (error) {
+    throw new TreeFingerprintError(
+      "root-unavailable",
+      `Tree root is unavailable: "${rootInput}".`,
+      void 0,
+      error
+    );
+  }
+  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
+    throw new TreeFingerprintError(
+      "unsafe-root",
+      `Tree root must be a real directory: "${rootInput}".`
+    );
+  }
+  const root = await realpath3(rootInput);
+  const entries = [];
+  const captured = /* @__PURE__ */ new Map();
+  const pathKeys = /* @__PURE__ */ new Set();
+  let fileCount = 0;
+  let totalBytes = 0;
+  async function walk(directory, relativeDirectory) {
+    const children = await readdir2(directory, { withFileTypes: true });
+    children.sort((left, right) => left.name.localeCompare(right.name, "en"));
+    for (const child of children) {
+      if (relativeDirectory === "" && child.name === ".git") {
+        continue;
+      }
+      validatePortableSegment(child.name);
+      const relativePath = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
+      const key = portablePathKey(relativePath);
+      if (pathKeys.has(key)) {
+        throw new TreeFingerprintError(
+          "path-collision",
+          `Case-insensitive path collision at "${relativePath}".`,
+          relativePath
+        );
+      }
+      pathKeys.add(key);
+      const childPath = path4.join(directory, child.name);
+      const before = await lstat(childPath);
+      if (before.isSymbolicLink()) {
+        throw new TreeFingerprintError(
+          "linked-tree",
+          `Links are not allowed in a skill tree: "${relativePath}".`,
+          relativePath
+        );
+      }
+      if (before.isDirectory()) {
+        const canonical = await realpath3(childPath);
+        if (!isPathInside(root, canonical)) {
+          throw new TreeFingerprintError(
+            "tree-escape",
+            `Directory escapes the skill root: "${relativePath}".`,
+            relativePath
+          );
+        }
+        entries.push({ kind: "directory", relativePath });
+        await walk(childPath, relativePath);
+        continue;
+      }
+      if (!before.isFile()) {
+        throw new TreeFingerprintError(
+          "special-file",
+          `Only regular files and directories are allowed: "${relativePath}".`,
+          relativePath
+        );
+      }
+      fileCount += 1;
+      totalBytes += before.size;
+      if (fileCount > MAX_FILES || totalBytes > MAX_TOTAL_BYTES) {
+        throw new TreeFingerprintError(
+          "tree-too-large",
+          `Skill exceeds ${MAX_FILES} files or ${MAX_TOTAL_BYTES} bytes.`,
+          relativePath
+        );
+      }
+      const content = await readFile3(childPath);
+      const after = await stat3(childPath);
+      if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
+        throw new TreeFingerprintError(
+          "tree-changed",
+          `Skill changed while it was being read: "${relativePath}".`,
+          relativePath
+        );
+      }
+      entries.push({
+        kind: "file",
+        relativePath,
+        size: content.length,
+        contentHash: sha256(content)
+      });
+      if (capturePaths.has(relativePath)) {
+        captured.set(relativePath, content);
+      }
+    }
+  }
+  await walk(root, "");
+  const fingerprint = entries.map(
+    (entry) => entry.kind === "directory" ? `D\0${entry.relativePath}` : `F\0${entry.relativePath}\0${entry.size}\0${entry.contentHash}`
+  ).join("\n");
+  return {
+    root,
+    treeHash: sha256(fingerprint),
+    entries,
+    captured
+  };
+}
+
+// src/internal/managed-projection.ts
+function validRecord(value, expectedName) {
   if (!value || typeof value !== "object") {
     return false;
   }
   const record = value;
-  return record.schemaVersion === 1 && typeof record.skillId === "string" && typeof record.name === "string" && typeof record.treeHash === "string" && record.source !== null && typeof record.source === "object" && typeof record.source.location === "string" && Array.isArray(record.deployments);
+  return record.schemaVersion === 1 && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === expectedName && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) && /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) && record.source !== null && typeof record.source === "object" && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path5.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && (record.source.url === void 0 || typeof record.source.url === "string") && (record.source.revision === void 0 || typeof record.source.revision === "string") && Array.isArray(record.deployments) && record.deployments.every(
+    (deployment) => deployment !== null && typeof deployment === "object" && typeof deployment.deploymentId === "string" && deployment.deploymentId.length > 0 && deployment.skillId === record.skillId && (deployment.host === "codex" || deployment.host === "claude-code" || deployment.host === "antigravity-ide") && (deployment.scope === "user" || deployment.scope === "workspace") && deployment.method === "copy" && deployment.ownership === "stash" && typeof deployment.root === "string" && path5.isAbsolute(deployment.root) && typeof deployment.path === "string" && path5.isAbsolute(deployment.path) && pathIdentity(deployment.path) === pathIdentity(path5.join(deployment.root, record.name)) && deployment.targetId === `${deployment.host}:${deployment.scope}:${pathIdentity(deployment.root)}` && /^sha256:[0-9a-f]{64}$/u.test(deployment.treeHash) && typeof deployment.deployedAt === "string"
+  );
 }
 async function treeHash(rootInput) {
   try {
-    const rootInfo = await lstat(rootInput);
-    if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-      return void 0;
-    }
-    const root = await realpath2(rootInput);
-    const entries = [];
-    let files = 0;
-    let totalBytes = 0;
-    async function walk(directory, relativeDirectory) {
-      const children = await readdir2(directory, { withFileTypes: true });
-      children.sort((left, right) => left.name.localeCompare(right.name, "en"));
-      for (const child of children) {
-        if (relativeDirectory === "" && child.name === ".git") {
-          continue;
-        }
-        const relativePath = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
-        const childPath = path4.join(directory, child.name);
-        const before = await lstat(childPath);
-        if (before.isSymbolicLink()) {
-          throw new Error("linked tree");
-        }
-        if (before.isDirectory()) {
-          const canonical = await realpath2(childPath);
-          if (!isPathInside(root, canonical)) {
-            throw new Error("tree escape");
-          }
-          entries.push({ kind: "directory", relativePath });
-          await walk(childPath, relativePath);
-          continue;
-        }
-        if (!before.isFile()) {
-          throw new Error("special file");
-        }
-        files += 1;
-        totalBytes += before.size;
-        if (files > MAX_FILES || totalBytes > MAX_TOTAL_BYTES) {
-          throw new Error("tree too large");
-        }
-        const content = await readFile3(childPath);
-        const after = await stat3(childPath);
-        if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-          throw new Error("tree changed");
-        }
-        entries.push({
-          kind: "file",
-          relativePath,
-          size: content.length,
-          contentHash: sha256(content)
-        });
-      }
-    }
-    await walk(root, "");
-    const fingerprint = entries.map(
-      (entry) => entry.kind === "directory" ? `D\0${entry.relativePath}` : `F\0${entry.relativePath}\0${entry.size}\0${entry.contentHash}`
-    ).join("\n");
-    return sha256(fingerprint);
+    return (await fingerprintTree(rootInput)).treeHash;
   } catch {
     return void 0;
   }
@@ -8473,9 +8622,9 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
     return { indexes, fingerprintPart: "" };
   }
   let recordFiles;
-  const recordsRoot = path4.join(managedRoot, ".stash", "records");
+  const recordsRoot = path5.join(managedRoot, ".stash", "records");
   try {
-    recordFiles = (await readdir2(recordsRoot)).filter((name) => name.endsWith(".json")).sort((left, right) => left.localeCompare(right, "en"));
+    recordFiles = (await readdir3(recordsRoot)).filter((name) => name.endsWith(".json")).sort((left, right) => left.localeCompare(right, "en"));
   } catch {
     return { indexes, fingerprintPart: "" };
   }
@@ -8484,9 +8633,10 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
   for (const file of recordFiles) {
     try {
       const parsed = JSON.parse(
-        await readFile3(path4.join(recordsRoot, file), "utf8")
+        await readFile4(path5.join(recordsRoot, file), "utf8")
       );
-      if (!validRecord(parsed)) {
+      const expectedName = file.slice(0, -".json".length);
+      if (!validRecord(parsed, expectedName)) {
         throw new Error("invalid record");
       }
       managedRecords.set(parsed.name, parsed);
@@ -8513,24 +8663,32 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
       });
     }
   }
+  const events = [];
   const canonicalBySkillId = /* @__PURE__ */ new Map();
   for (const record of managedIndex.records) {
     const managedRecord = managedRecords.get(record.name);
     if (managedRecord) {
       record.managedSkillId = managedRecord.skillId;
       record.relatedCopies = [];
+      record.source = {
+        ...record.source,
+        ...managedRecord.source.url ? { url: managedRecord.source.url } : {},
+        ...managedRecord.source.revision ? { revision: managedRecord.source.revision } : {}
+      };
+      events.push(
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}`
+      );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }
   }
-  const events = [];
   for (const index of indexes) {
     if (index.catalogId === "managed") {
       continue;
     }
     const visible = [];
     for (const record of index.records) {
-      const skillRoot = path4.dirname(
-        path4.resolve(index.root, record.relativeSkillFile)
+      const skillRoot = path5.dirname(
+        path5.resolve(index.root, record.relativeSkillFile)
       );
       const target = targets.get(pathIdentity(skillRoot));
       const canonical = target ? canonicalBySkillId.get(target.record.skillId) : void 0;
@@ -9257,10 +9415,10 @@ var StashCatalogImplementation = class {
         resource
       };
     }
-    const skillRoot = path5.dirname(
-      path5.resolve(index.root, record.relativeSkillFile)
+    const skillRoot = path6.dirname(
+      path6.resolve(index.root, record.relativeSkillFile)
     );
-    const candidatePath = path5.resolve(skillRoot, normalizedResource);
+    const candidatePath = path6.resolve(skillRoot, normalizedResource);
     if (!isPathInside(skillRoot, candidatePath) || !isPathInside(index.root, candidatePath)) {
       return {
         schemaVersion: RESULT_SCHEMA_VERSION,
@@ -9272,7 +9430,7 @@ var StashCatalogImplementation = class {
     let resolvedPath;
     let resolvedSize = 0;
     try {
-      resolvedPath = await realpath3(candidatePath);
+      resolvedPath = await realpath4(candidatePath);
       if (!isPathInside(skillRoot, resolvedPath) || !isPathInside(index.root, resolvedPath)) {
         return {
           schemaVersion: RESULT_SCHEMA_VERSION,
@@ -9333,7 +9491,7 @@ var StashCatalogImplementation = class {
         bytes: resolvedSize
       };
     }
-    const buffer = await readFile4(resolvedPath);
+    const buffer = await readFile5(resolvedPath);
     if (buffer.includes(0)) {
       return {
         schemaVersion: RESULT_SCHEMA_VERSION,
@@ -9454,45 +9612,67 @@ import { randomUUID } from "node:crypto";
 import {
   lstat as lstat2,
   mkdir as mkdir2,
-  readFile as readFile5,
-  readdir as readdir3,
-  realpath as realpath4,
+  readFile as readFile6,
+  readdir as readdir4,
+  realpath as realpath5,
   rename as rename2,
   rm,
-  stat as stat5,
   unlink as unlink2,
   writeFile as writeFile2
 } from "node:fs/promises";
-import { homedir as homedir2, platform as platform3 } from "node:os";
-import path6 from "node:path";
+import { homedir as homedir3 } from "node:os";
+import path8 from "node:path";
+
+// src/internal/lifecycle-host-policy.ts
+import { homedir as homedir2 } from "node:os";
+import path7 from "node:path";
+function resolveLifecycleTarget(target, homeDirectory = homedir2()) {
+  if (target.host === "antigravity-cli") {
+    throw new StashError(
+      "unsupported-host-layout",
+      "Antigravity CLI standalone skills use flat Markdown in both user and workspace scopes; folder lifecycle is unsupported.",
+      2
+    );
+  }
+  if (target.scope === "workspace" || target.workspace) {
+    throw new StashError(
+      "unsupported-host-scope",
+      "Workspace lifecycle targets are not supported in this release.",
+      2
+    );
+  }
+  const scope = target.scope ?? "user";
+  switch (target.host) {
+    case "codex":
+      return {
+        host: target.host,
+        scope,
+        root: path7.join(homeDirectory, ".agents", "skills")
+      };
+    case "claude-code":
+      return {
+        host: target.host,
+        scope,
+        root: path7.join(homeDirectory, ".claude", "skills")
+      };
+    case "antigravity-ide":
+      return {
+        host: target.host,
+        scope,
+        root: path7.join(homeDirectory, ".gemini", "config", "skills")
+      };
+  }
+}
+function lifecycleReloadRequired(host) {
+  return host !== "claude-code";
+}
+function lifecycleRefreshObservation(host) {
+  return lifecycleReloadRequired(host) ? "restart-required" : "live";
+}
+
+// src/stash-lifecycle.ts
 var NAME_PATTERN2 = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-var MAX_FILES2 = 1e4;
-var MAX_TOTAL_BYTES2 = 256 * 1024 * 1024;
 var STORE_SCHEMA_VERSION = 1;
-var WINDOWS_RESERVED_NAMES = /* @__PURE__ */ new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  "com1",
-  "com2",
-  "com3",
-  "com4",
-  "com5",
-  "com6",
-  "com7",
-  "com8",
-  "com9",
-  "lpt1",
-  "lpt2",
-  "lpt3",
-  "lpt4",
-  "lpt5",
-  "lpt6",
-  "lpt7",
-  "lpt8",
-  "lpt9"
-]);
 function asObject3(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -9546,143 +9726,45 @@ function parseSkillMetadata(snapshot) {
     }
   };
 }
-function portablePathKey(relativePath) {
-  return relativePath.normalize("NFKC").toLocaleLowerCase("und");
-}
-function validatePortableSegment(segment) {
-  if (!segment || /[. ]$/u.test(segment)) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Portable skill paths cannot end in a dot or space: "${segment}".`,
-      3
-    );
-  }
-  const base = segment.split(".", 1)[0]?.toLocaleLowerCase("und") ?? "";
-  if (WINDOWS_RESERVED_NAMES.has(base)) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Portable skill paths cannot use the reserved name "${segment}".`,
-      3
-    );
-  }
-}
 async function snapshotTree(sourceRoot) {
-  const rootInput = path6.resolve(sourceRoot);
-  const rootInfo = await lstat2(rootInput).catch((error) => {
-    throw new StashError(
-      "skill-unavailable",
-      `Skill directory is unavailable at "${rootInput}": ${String(error)}`,
-      4
+  let fingerprint;
+  try {
+    fingerprint = await fingerprintTree(
+      sourceRoot,
+      /* @__PURE__ */ new Set(["SKILL.md", "stash.meta.yaml"])
     );
-  });
-  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Skill root must be a real directory, not a link: "${rootInput}".`,
-      3
-    );
-  }
-  const root = await realpath4(rootInput);
-  const entries = [];
-  const pathKeys = /* @__PURE__ */ new Set();
-  let fileCount = 0;
-  let totalBytes = 0;
-  let skillSource;
-  let sidecarSource;
-  async function walk(directory, relativeDirectory) {
-    const children = await readdir3(directory, { withFileTypes: true });
-    children.sort((left, right) => left.name.localeCompare(right.name, "en"));
-    for (const child of children) {
-      if (relativeDirectory === "" && child.name === ".git") {
-        continue;
-      }
-      validatePortableSegment(child.name);
-      const relativePath = relativeDirectory ? `${relativeDirectory}/${child.name}` : child.name;
-      const key = portablePathKey(relativePath);
-      if (pathKeys.has(key)) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Case-insensitive path collision at "${relativePath}".`,
-          3
-        );
-      }
-      pathKeys.add(key);
-      const childPath = path6.join(directory, child.name);
-      const before = await lstat2(childPath);
-      if (before.isSymbolicLink()) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Symlinks and junctions are not allowed: "${relativePath}".`,
-          3
-        );
-      }
-      if (before.isDirectory()) {
-        const canonical = await realpath4(childPath);
-        if (!isPathInside(root, canonical)) {
-          throw new StashError(
-            "unsafe-skill-tree",
-            `Directory escapes the skill root: "${relativePath}".`,
-            3
-          );
-        }
-        entries.push({ kind: "directory", relativePath });
-        await walk(childPath, relativePath);
-        continue;
-      }
-      if (!before.isFile()) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Only regular files and directories are allowed: "${relativePath}".`,
-          3
-        );
-      }
-      fileCount += 1;
-      totalBytes += before.size;
-      if (fileCount > MAX_FILES2 || totalBytes > MAX_TOTAL_BYTES2) {
-        throw new StashError(
-          "skill-too-large",
-          `Skill exceeds ${MAX_FILES2} files or ${MAX_TOTAL_BYTES2} bytes.`,
-          3
-        );
-      }
-      const content = await readFile5(childPath);
-      const after = await stat5(childPath);
-      if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-        throw new StashError(
-          "source-changed",
-          `Skill changed while it was being read: "${relativePath}".`,
-          4
-        );
-      }
-      const contentHash = sha256(content);
-      entries.push({
-        kind: "file",
-        relativePath,
-        size: content.length,
-        contentHash
-      });
-      if (relativePath === "SKILL.md") {
-        skillSource = content.toString("utf8");
-      } else if (relativePath === "stash.meta.yaml") {
-        sidecarSource = content.toString("utf8");
-      }
+  } catch (error) {
+    if (!(error instanceof TreeFingerprintError)) {
+      throw error;
     }
+    if (error.failure === "root-unavailable") {
+      throw new StashError(
+        "skill-unavailable",
+        `Skill directory is unavailable at "${path8.resolve(sourceRoot)}": ${String(error.detail ?? error.message)}`,
+        4
+      );
+    }
+    if (error.failure === "tree-too-large") {
+      throw new StashError("skill-too-large", error.message, 3);
+    }
+    if (error.failure === "tree-changed") {
+      throw new StashError("source-changed", error.message, 4);
+    }
+    throw new StashError("unsafe-skill-tree", error.message, 3);
   }
-  await walk(root, "");
+  const skillSource = fingerprint.captured.get("SKILL.md")?.toString("utf8");
   if (skillSource === void 0) {
     throw new StashError(
       "invalid-skill",
-      `Skill root must contain SKILL.md: "${root}".`,
+      `Skill root must contain SKILL.md: "${fingerprint.root}".`,
       3
     );
   }
-  const fingerprint = entries.map(
-    (entry) => entry.kind === "directory" ? `D\0${entry.relativePath}` : `F\0${entry.relativePath}\0${entry.size}\0${entry.contentHash}`
-  ).join("\n");
+  const sidecarSource = fingerprint.captured.get("stash.meta.yaml")?.toString("utf8");
   return {
-    root,
-    treeHash: sha256(fingerprint),
-    entries,
+    root: fingerprint.root,
+    treeHash: fingerprint.treeHash,
+    entries: fingerprint.entries,
     skillSource,
     ...sidecarSource !== void 0 ? { sidecarSource } : {}
   };
@@ -9690,14 +9772,14 @@ async function snapshotTree(sourceRoot) {
 async function copySnapshot(snapshot, destination) {
   await mkdir2(destination, { recursive: false });
   for (const entry of snapshot.entries) {
-    const relative = entry.relativePath.split("/").join(path6.sep);
-    const target = path6.join(destination, relative);
+    const relative = entry.relativePath.split("/").join(path8.sep);
+    const target = path8.join(destination, relative);
     if (entry.kind === "directory") {
       await mkdir2(target, { recursive: false });
       continue;
     }
-    const source = path6.join(snapshot.root, relative);
-    const content = await readFile5(source);
+    const source = path8.join(snapshot.root, relative);
+    const content = await readFile6(source);
     if (sha256(content) !== entry.contentHash) {
       throw new StashError(
         "source-changed",
@@ -9727,82 +9809,25 @@ async function pathType(target) {
   }
 }
 function samePath(left, right) {
-  const normalizedLeft = path6.resolve(left).normalize("NFKC");
-  const normalizedRight = path6.resolve(right).normalize("NFKC");
-  return platform3() === "win32" ? normalizedLeft.toLocaleLowerCase("und") === normalizedRight.toLocaleLowerCase("und") : normalizedLeft === normalizedRight;
-}
-function pathIdentity2(value) {
-  const normalized = path6.resolve(value).normalize("NFKC");
-  return platform3() === "win32" ? normalized.toLocaleLowerCase("und") : normalized;
+  return pathIdentity(left) === pathIdentity(right);
 }
 function targetIdentity(target) {
-  return `${target.host}:${target.scope}:${pathIdentity2(target.root)}`;
-}
-function resolveHostRoot(target) {
-  if (target.host === "antigravity-cli") {
-    throw new StashError(
-      "unsupported-host-layout",
-      "Antigravity CLI standalone skills use flat Markdown in both user and workspace scopes; folder lifecycle is unsupported.",
-      2
-    );
-  }
-  if (target.scope === "workspace") {
-    throw new StashError(
-      "unsupported-host-scope",
-      "Workspace lifecycle targets are not supported in this release.",
-      2
-    );
-  }
-  if (target.root) {
-    return {
-      host: target.host,
-      scope: target.scope ?? "custom",
-      root: path6.resolve(target.root)
-    };
-  }
-  const scope = target.scope ?? "user";
-  if (scope === "custom") {
-    throw new StashError(
-      "invalid-argument",
-      "A custom lifecycle target requires root.",
-      2
-    );
-  }
-  switch (target.host) {
-    case "codex":
-      return {
-        host: target.host,
-        scope,
-        root: path6.join(homedir2(), ".agents", "skills")
-      };
-    case "claude-code":
-      return {
-        host: target.host,
-        scope,
-        root: path6.join(homedir2(), ".claude", "skills")
-      };
-    case "antigravity-ide":
-      return {
-        host: target.host,
-        scope,
-        root: path6.join(homedir2(), ".gemini", "config", "skills")
-      };
-  }
+  return `${target.host}:${target.scope}:${pathIdentity(target.root)}`;
 }
 async function isPluginContained(source) {
-  let current = path6.dirname(source);
+  let current = path8.dirname(source);
   for (let depth = 0; depth < 12; depth += 1) {
     const markers = [
-      path6.join(current, ".claude-plugin", "plugin.json"),
-      path6.join(current, ".codex-plugin", "plugin.json"),
-      path6.join(current, "plugin.json")
+      path8.join(current, ".claude-plugin", "plugin.json"),
+      path8.join(current, ".codex-plugin", "plugin.json"),
+      path8.join(current, "plugin.json")
     ];
     for (const marker of markers) {
       if (await pathType(marker) !== "missing") {
         return true;
       }
     }
-    const parent = path6.dirname(current);
+    const parent = path8.dirname(current);
     if (parent === current) {
       break;
     }
@@ -9813,21 +9838,22 @@ async function isPluginContained(source) {
 var StashLifecycleImplementation = class {
   #managedRoot;
   #now;
+  #lifecycleHome = path8.resolve(homedir3());
   constructor(managedRoot, now) {
-    this.#managedRoot = path6.resolve(managedRoot);
+    this.#managedRoot = path8.resolve(managedRoot);
     this.#now = now;
   }
   #metadataRoot() {
-    return path6.join(this.#managedRoot, ".stash");
+    return path8.join(this.#managedRoot, ".stash");
   }
   #recordPath(name) {
-    return path6.join(this.#metadataRoot(), "records", `${name}.json`);
+    return path8.join(this.#metadataRoot(), "records", `${name}.json`);
   }
   async #ensureLayout() {
-    await mkdir2(path6.join(this.#metadataRoot(), "records"), { recursive: true });
-    await mkdir2(path6.join(this.#metadataRoot(), "staging"), { recursive: true });
-    await mkdir2(path6.join(this.#metadataRoot(), "journal"), { recursive: true });
-    const manifestPath = path6.join(this.#managedRoot, "stash.catalog.yaml");
+    await mkdir2(path8.join(this.#metadataRoot(), "records"), { recursive: true });
+    await mkdir2(path8.join(this.#metadataRoot(), "staging"), { recursive: true });
+    await mkdir2(path8.join(this.#metadataRoot(), "journal"), { recursive: true });
+    const manifestPath = path8.join(this.#managedRoot, "stash.catalog.yaml");
     try {
       await writeFile2(
         manifestPath,
@@ -9842,7 +9868,7 @@ var StashLifecycleImplementation = class {
     }
   }
   #journalPath(operationId) {
-    return path6.join(this.#metadataRoot(), "journal", `${operationId}.json`);
+    return path8.join(this.#metadataRoot(), "journal", `${operationId}.json`);
   }
   async #writeJournal(journal) {
     const finalPath = this.#journalPath(journal.operationId);
@@ -9901,16 +9927,16 @@ var StashLifecycleImplementation = class {
       "source-tombstoned",
       "archive-committed"
     ]);
-    if (journal.schemaVersion !== 1 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path6.isAbsolute(journal.source) || !path6.isAbsolute(journal.tombstone) || !path6.isAbsolute(journal.managedPath)) {
+    if (journal.schemaVersion !== 1 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path8.isAbsolute(journal.source) || !path8.isAbsolute(journal.tombstone) || !path8.isAbsolute(journal.managedPath)) {
       throw new StashError(
         "invalid-lifecycle-journal",
         `Invalid or unsafe lifecycle journal "${journalPath}".`,
         5
       );
     }
-    const expectedManagedPath = path6.join(this.#managedRoot, journal.name);
-    const expectedTombstoneParent = path6.dirname(path6.dirname(journal.source));
-    if (!samePath(journal.managedPath, expectedManagedPath) || !samePath(path6.dirname(journal.tombstone), expectedTombstoneParent) || !path6.basename(journal.tombstone).startsWith(
+    const expectedManagedPath = path8.join(this.#managedRoot, journal.name);
+    const expectedTombstoneParent = path8.dirname(path8.dirname(journal.source));
+    if (!samePath(journal.managedPath, expectedManagedPath) || !samePath(path8.dirname(journal.tombstone), expectedTombstoneParent) || !path8.basename(journal.tombstone).startsWith(
       `.stash-archive-${journal.name}-`
     ) || isPathInside(this.#managedRoot, journal.source) || isPathInside(this.#managedRoot, journal.tombstone)) {
       throw new StashError(
@@ -9975,13 +10001,13 @@ var StashLifecycleImplementation = class {
     await unlink2(journalPath);
   }
   async #recoverJournals() {
-    const journalRoot = path6.join(this.#metadataRoot(), "journal");
-    const files = (await readdir3(journalRoot)).filter((name) => name.endsWith(".json")).sort((left, right) => left.localeCompare(right, "en"));
+    const journalRoot = path8.join(this.#metadataRoot(), "journal");
+    const files = (await readdir4(journalRoot)).filter((name) => name.endsWith(".json")).sort((left, right) => left.localeCompare(right, "en"));
     for (const file of files) {
-      const journalPath = path6.join(journalRoot, file);
+      const journalPath = path8.join(journalRoot, file);
       let journal;
       try {
-        journal = JSON.parse(await readFile5(journalPath, "utf8"));
+        journal = JSON.parse(await readFile6(journalPath, "utf8"));
       } catch (error) {
         throw new StashError(
           "invalid-lifecycle-journal",
@@ -9997,7 +10023,7 @@ var StashLifecycleImplementation = class {
     let owner;
     try {
       owner = JSON.parse(
-        await readFile5(path6.join(lockPath, "owner.json"), "utf8")
+        await readFile6(path8.join(lockPath, "owner.json"), "utf8")
       );
     } catch (error) {
       throw new StashError(
@@ -10015,23 +10041,24 @@ var StashLifecycleImplementation = class {
     }
     return owner;
   }
-  #ownerIsAlive(owner) {
+  #ownerState(owner) {
     try {
       process.kill(owner.pid, 0);
-      return true;
-    } catch {
-      return false;
+      return "alive";
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+      return code === "ESRCH" ? "dead" : "unknown";
     }
   }
   async #publishLock(lockPath, owner) {
-    const temporaryPath = path6.join(
+    const temporaryPath = path8.join(
       this.#metadataRoot(),
       `.lifecycle-lock-${owner.ownerToken}.tmp`
     );
     await mkdir2(temporaryPath, { recursive: false });
     try {
       await writeFile2(
-        path6.join(temporaryPath, "owner.json"),
+        path8.join(temporaryPath, "owner.json"),
         `${JSON.stringify(owner)}
 `,
         { encoding: "utf8", flag: "wx" }
@@ -10052,7 +10079,7 @@ var StashLifecycleImplementation = class {
     }
   }
   async #reclaimDeadLock(lockPath) {
-    const guardPath = path6.join(this.#metadataRoot(), "lifecycle.reclaim");
+    const guardPath = path8.join(this.#metadataRoot(), "lifecycle.reclaim");
     try {
       await mkdir2(guardPath, { recursive: false });
     } catch (error) {
@@ -10077,14 +10104,14 @@ var StashLifecycleImplementation = class {
         );
       }
       const owner = await this.#readLockOwner(lockPath);
-      if (this.#ownerIsAlive(owner)) {
+      if (this.#ownerState(owner) !== "dead") {
         throw new StashError(
           "lifecycle-busy",
-          `Another lifecycle operation holds "${lockPath}".`,
+          `Lifecycle ownership at "${lockPath}" is live or cannot be safely probed.`,
           4
         );
       }
-      const reclaimedPath = path6.join(
+      const reclaimedPath = path8.join(
         this.#metadataRoot(),
         `.lifecycle-reclaimed-${owner.ownerToken}-${randomUUID()}`
       );
@@ -10116,10 +10143,10 @@ var StashLifecycleImplementation = class {
         return owner;
       }
       const existing = await this.#readLockOwner(lockPath);
-      if (this.#ownerIsAlive(existing)) {
+      if (this.#ownerState(existing) !== "dead") {
         throw new StashError(
           "lifecycle-busy",
-          `Another lifecycle operation holds "${lockPath}".`,
+          `Lifecycle ownership at "${lockPath}" is live or cannot be safely probed.`,
           4
         );
       }
@@ -10144,7 +10171,7 @@ var StashLifecycleImplementation = class {
   }
   async #withLock(operation) {
     await this.#ensureLayout();
-    const lockPath = path6.join(this.#metadataRoot(), "lifecycle.lock");
+    const lockPath = path8.join(this.#metadataRoot(), "lifecycle.lock");
     const owner = await this.#acquireLock(lockPath);
     try {
       await this.#recoverJournals();
@@ -10156,9 +10183,9 @@ var StashLifecycleImplementation = class {
   async #readRecord(name) {
     const recordPath = this.#recordPath(name);
     try {
-      const parsed = JSON.parse(await readFile5(recordPath, "utf8"));
+      const parsed = JSON.parse(await readFile6(recordPath, "utf8"));
       if (parsed.schemaVersion !== STORE_SCHEMA_VERSION || typeof parsed.skillId !== "string" || parsed.skillId.length === 0 || parsed.name !== name || typeof parsed.treeHash !== "string" || !Array.isArray(parsed.deployments) || parsed.deployments.some(
-        (deployment) => typeof deployment.deploymentId !== "string" || deployment.skillId !== parsed.skillId || typeof deployment.targetId !== "string" || deployment.targetId !== targetIdentity(deployment) || deployment.ownership !== "stash" || !samePath(deployment.path, path6.join(deployment.root, parsed.name))
+        (deployment) => typeof deployment.deploymentId !== "string" || deployment.skillId !== parsed.skillId || typeof deployment.targetId !== "string" || deployment.targetId !== targetIdentity(deployment) || deployment.ownership !== "stash" || !samePath(deployment.path, path8.join(deployment.root, parsed.name))
       )) {
         throw new Error("invalid lifecycle record shape");
       }
@@ -10191,8 +10218,8 @@ var StashLifecycleImplementation = class {
     }
   }
   async #assertSourceBoundary(source) {
-    const canonicalSource = await realpath4(source);
-    const canonicalManaged = await realpath4(this.#managedRoot);
+    const canonicalSource = await realpath5(source);
+    const canonicalManaged = await realpath5(this.#managedRoot);
     if (isPathInside(canonicalManaged, canonicalSource) || isPathInside(canonicalSource, canonicalManaged)) {
       throw new StashError(
         "unsafe-source",
@@ -10208,7 +10235,7 @@ var StashLifecycleImplementation = class {
       type = await pathType(root);
     }
     if (type === "missing" && allowMissing) {
-      return path6.resolve(root);
+      return path8.resolve(root);
     }
     if (type !== "directory") {
       throw new StashError(
@@ -10217,7 +10244,7 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    return realpath4(root);
+    return realpath5(root);
   }
   async #storeSource(source, kind, sourceUrl, revision, expectedTreeHash) {
     await this.#assertSourceBoundary(source);
@@ -10230,7 +10257,7 @@ var StashLifecycleImplementation = class {
       );
     }
     const metadata = parseSkillMetadata(snapshot);
-    const managedPath = path6.join(this.#managedRoot, metadata.name);
+    const managedPath = path8.join(this.#managedRoot, metadata.name);
     const existingType = await pathType(managedPath);
     if (existingType !== "missing") {
       if (existingType !== "directory") {
@@ -10262,7 +10289,7 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    const stage = path6.join(this.#metadataRoot(), "staging", randomUUID());
+    const stage = path8.join(this.#metadataRoot(), "staging", randomUUID());
     let committed = false;
     try {
       await copySnapshot(snapshot, stage);
@@ -10311,7 +10338,7 @@ var StashLifecycleImplementation = class {
   async install(request) {
     return this.#withLock(async () => {
       const stored = await this.#storeSource(
-        path6.resolve(request.source),
+        path8.resolve(request.source),
         "local-import",
         request.sourceUrl,
         request.revision
@@ -10327,16 +10354,19 @@ var StashLifecycleImplementation = class {
   }
   async archive(request) {
     return this.#withLock(async () => {
-      const resolvedTarget = resolveHostRoot(request.target);
+      const resolvedTarget = resolveLifecycleTarget(
+        request.target,
+        this.#lifecycleHome
+      );
       resolvedTarget.root = await this.#canonicalHostRoot(
         resolvedTarget.root,
         false
       );
       const looksLikeName = NAME_PATTERN2.test(request.source);
-      const source = path6.resolve(
-        looksLikeName ? path6.join(resolvedTarget.root, request.source) : request.source
+      const source = path8.resolve(
+        looksLikeName ? path8.join(resolvedTarget.root, request.source) : request.source
       );
-      if (!samePath(path6.dirname(source), resolvedTarget.root)) {
+      if (!samePath(path8.dirname(source), resolvedTarget.root)) {
         throw new StashError(
           "unsafe-archive-source",
           `Archive source must be an exact standalone child of the selected host root "${resolvedTarget.root}".`,
@@ -10353,11 +10383,39 @@ var StashLifecycleImplementation = class {
       await this.#assertSourceBoundary(source);
       const sourceSnapshot = await snapshotTree(source);
       const metadata = parseSkillMetadata(sourceSnapshot);
-      const managedPath = path6.join(this.#managedRoot, metadata.name);
-      const managedExistedBefore = await pathType(managedPath) !== "missing" || await this.#readRecord(metadata.name) !== void 0;
-      const tombstoneParent = path6.dirname(resolvedTarget.root);
+      const managedPath = path8.join(this.#managedRoot, metadata.name);
+      const existingRecord = await this.#readRecord(metadata.name);
+      const managedType = await pathType(managedPath);
+      const selectedTargetId = targetIdentity(resolvedTarget);
+      const trackedDeployment = existingRecord?.deployments.find(
+        (deployment) => samePath(deployment.path, source) && deployment.targetId === selectedTargetId
+      );
+      if (existingRecord && trackedDeployment) {
+        if (managedType !== "directory") {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill "${metadata.name}" is unavailable; refusing to archive its tracked deployment.`,
+            3
+          );
+        }
+        const managedSnapshot = await snapshotTree(managedPath);
+        if (managedSnapshot.treeHash !== existingRecord.treeHash || sourceSnapshot.treeHash !== existingRecord.treeHash || trackedDeployment.treeHash !== existingRecord.treeHash) {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill or tracked deployment "${metadata.name}" drifted; refusing archive.`,
+            3
+          );
+        }
+        return this.#deactivateDeployment(
+          existingRecord,
+          managedPath,
+          resolvedTarget
+        );
+      }
+      const managedExistedBefore = managedType !== "missing" || existingRecord !== void 0;
+      const tombstoneParent = path8.dirname(resolvedTarget.root);
       await mkdir2(tombstoneParent, { recursive: true });
-      const tombstone = path6.join(
+      const tombstone = path8.join(
         tombstoneParent,
         `.stash-archive-${metadata.name}-${randomUUID()}`
       );
@@ -10444,7 +10502,7 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      const managedPath = path6.join(this.#managedRoot, request.name);
+      const managedPath = path8.join(this.#managedRoot, request.name);
       const managedSnapshot = await snapshotTree(managedPath);
       if (managedSnapshot.treeHash !== record.treeHash) {
         throw new StashError(
@@ -10453,9 +10511,9 @@ var StashLifecycleImplementation = class {
           3
         );
       }
-      const target = resolveHostRoot(request.target);
+      const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, true);
-      const deploymentPath = path6.join(target.root, request.name);
+      const deploymentPath = path8.join(target.root, request.name);
       const targetId = targetIdentity(target);
       const existing = await pathType(deploymentPath);
       const tracked = record.deployments.find(
@@ -10472,7 +10530,7 @@ var StashLifecycleImplementation = class {
               managedPath,
               treeHash: record.treeHash,
               deployment: tracked,
-              reloadRequired: target.host !== "claude-code",
+              reloadRequired: lifecycleReloadRequired(target.host),
               warning: "DEPLOYED means present in a discovery root; host enable/disable overrides were not changed."
             };
           }
@@ -10483,8 +10541,8 @@ var StashLifecycleImplementation = class {
           3
         );
       }
-      const stage = path6.join(
-        path6.dirname(target.root),
+      const stage = path8.join(
+        path8.dirname(target.root),
         `.stash-deploy-${record.name}-${randomUUID()}`
       );
       let committed = false;
@@ -10535,7 +10593,7 @@ var StashLifecycleImplementation = class {
           managedPath,
           treeHash: record.treeHash,
           deployment,
-          reloadRequired: target.host !== "claude-code",
+          reloadRequired: lifecycleReloadRequired(target.host),
           warning: "DEPLOYED means present in a discovery root; host enable/disable overrides were not changed."
         };
       } finally {
@@ -10544,6 +10602,99 @@ var StashLifecycleImplementation = class {
         }
       }
     });
+  }
+  async #deactivateDeployment(record, managedPath, target) {
+    const deploymentPath = path8.join(target.root, record.name);
+    const targetId = targetIdentity(target);
+    const deployment = record.deployments.find(
+      (candidate) => samePath(candidate.path, deploymentPath) && candidate.targetId === targetId
+    );
+    if (!deployment || deployment.ownership !== "stash" || deployment.skillId !== record.skillId) {
+      throw new StashError(
+        "detached-deployment",
+        `Stash did not create deployment "${deploymentPath}"; refusing to remove it.`,
+        3
+      );
+    }
+    const existing = await pathType(deploymentPath);
+    if (existing === "missing") {
+      record.deployments = record.deployments.filter(
+        (candidate) => !samePath(candidate.path, deploymentPath)
+      );
+      record.lastValidatedAt = new Date(this.#now()).toISOString();
+      await this.#writeRecord(record);
+      return {
+        status: "deactivated",
+        name: record.name,
+        skillId: record.skillId,
+        managedPath,
+        treeHash: record.treeHash,
+        warning: "The tracked deployment was already missing."
+      };
+    }
+    if (existing !== "directory") {
+      throw new StashError(
+        "deployment-drift",
+        `Tracked deployment is no longer a real directory: "${deploymentPath}".`,
+        3
+      );
+    }
+    const deployedSnapshot = await snapshotTree(deploymentPath);
+    if (deployedSnapshot.treeHash !== deployment.treeHash) {
+      throw new StashError(
+        "deployment-drift",
+        `Tracked deployment changed and will not be removed: "${deploymentPath}".`,
+        3
+      );
+    }
+    const tombstone = path8.join(
+      path8.dirname(target.root),
+      `.stash-deactivate-${record.name}-${randomUUID()}`
+    );
+    await rename2(deploymentPath, tombstone);
+    try {
+      const movedSnapshot = await snapshotTree(tombstone);
+      if (movedSnapshot.treeHash !== deployment.treeHash) {
+        await rename2(tombstone, deploymentPath);
+        throw new StashError(
+          "deployment-drift",
+          `Deployment changed during deactivation and was restored: "${deploymentPath}".`,
+          3
+        );
+      }
+      const previousDeployments = record.deployments;
+      record.deployments = previousDeployments.filter(
+        (candidate) => !samePath(candidate.path, deploymentPath)
+      );
+      record.lastValidatedAt = new Date(this.#now()).toISOString();
+      try {
+        await this.#writeRecord(record);
+      } catch (error) {
+        record.deployments = previousDeployments;
+        await rename2(tombstone, deploymentPath).catch(() => void 0);
+        throw error;
+      }
+      let warning;
+      try {
+        await rm(tombstone, { recursive: true, force: false });
+      } catch (error) {
+        warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
+      }
+      return {
+        status: "deactivated",
+        name: record.name,
+        skillId: record.skillId,
+        managedPath,
+        treeHash: record.treeHash,
+        reloadRequired: lifecycleReloadRequired(target.host),
+        ...warning ? { warning } : {}
+      };
+    } catch (error) {
+      if (await pathType(tombstone) !== "missing") {
+        await rename2(tombstone, deploymentPath).catch(() => void 0);
+      }
+      throw error;
+    }
   }
   async deactivate(request) {
     return this.#withLock(async () => {
@@ -10555,110 +10706,20 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      const managedPath = path6.join(this.#managedRoot, request.name);
-      const target = resolveHostRoot(request.target);
+      const managedPath = path8.join(this.#managedRoot, request.name);
+      const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, false, true);
-      const deploymentPath = path6.join(target.root, request.name);
-      const targetId = targetIdentity(target);
-      const deployment = record.deployments.find(
-        (candidate) => samePath(candidate.path, deploymentPath) && candidate.targetId === targetId
-      );
-      if (!deployment || deployment.ownership !== "stash" || deployment.skillId !== record.skillId) {
-        throw new StashError(
-          "detached-deployment",
-          `Stash did not create deployment "${deploymentPath}"; refusing to remove it.`,
-          3
-        );
-      }
-      const existing = await pathType(deploymentPath);
-      if (existing === "missing") {
-        record.deployments = record.deployments.filter(
-          (candidate) => !samePath(candidate.path, deploymentPath)
-        );
-        record.lastValidatedAt = new Date(this.#now()).toISOString();
-        await this.#writeRecord(record);
-        return {
-          status: "deactivated",
-          name: record.name,
-          skillId: record.skillId,
-          managedPath,
-          treeHash: record.treeHash,
-          warning: "The tracked deployment was already missing."
-        };
-      }
-      if (existing !== "directory") {
-        throw new StashError(
-          "deployment-drift",
-          `Tracked deployment is no longer a real directory: "${deploymentPath}".`,
-          3
-        );
-      }
-      const deployedSnapshot = await snapshotTree(deploymentPath);
-      if (deployedSnapshot.treeHash !== deployment.treeHash) {
-        throw new StashError(
-          "deployment-drift",
-          `Tracked deployment changed and will not be removed: "${deploymentPath}".`,
-          3
-        );
-      }
-      const tombstone = path6.join(
-        path6.dirname(target.root),
-        `.stash-deactivate-${record.name}-${randomUUID()}`
-      );
-      await rename2(deploymentPath, tombstone);
-      try {
-        const movedSnapshot = await snapshotTree(tombstone);
-        if (movedSnapshot.treeHash !== deployment.treeHash) {
-          await rename2(tombstone, deploymentPath);
-          throw new StashError(
-            "deployment-drift",
-            `Deployment changed during deactivation and was restored: "${deploymentPath}".`,
-            3
-          );
-        }
-        const previousDeployments = record.deployments;
-        record.deployments = previousDeployments.filter(
-          (candidate) => !samePath(candidate.path, deploymentPath)
-        );
-        record.lastValidatedAt = new Date(this.#now()).toISOString();
-        try {
-          await this.#writeRecord(record);
-        } catch (error) {
-          record.deployments = previousDeployments;
-          await rename2(tombstone, deploymentPath).catch(() => void 0);
-          throw error;
-        }
-        let warning;
-        try {
-          await rm(tombstone, { recursive: true, force: false });
-        } catch (error) {
-          warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
-        }
-        return {
-          status: "deactivated",
-          name: record.name,
-          skillId: record.skillId,
-          managedPath,
-          treeHash: record.treeHash,
-          reloadRequired: target.host !== "claude-code",
-          ...warning ? { warning } : {}
-        };
-      } catch (error) {
-        if (await pathType(tombstone) !== "missing") {
-          await rename2(tombstone, deploymentPath).catch(() => void 0);
-        }
-        throw error;
-      }
+      return this.#deactivateDeployment(record, managedPath, target);
     });
   }
   async status(request = {}) {
-    const recordsRoot = path6.join(this.#metadataRoot(), "records");
+    const recordsRoot = path8.join(this.#metadataRoot(), "records");
     let names;
     if (request.name) {
       names = [request.name];
     } else {
       try {
-        names = (await readdir3(recordsRoot)).filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -".json".length)).sort((left, right) => left.localeCompare(right, "en"));
+        names = (await readdir4(recordsRoot)).filter((name) => name.endsWith(".json")).map((name) => name.slice(0, -".json".length)).sort((left, right) => left.localeCompare(right, "en"));
       } catch (error) {
         const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
         if (code === "ENOENT") {
@@ -10674,7 +10735,7 @@ var StashLifecycleImplementation = class {
       if (!record) {
         continue;
       }
-      const managedPath = path6.join(this.#managedRoot, name);
+      const managedPath = path8.join(this.#managedRoot, name);
       const managedType = await pathType(managedPath);
       let storeState = managedType === "missing" ? "missing" : "stored";
       let storeIntegrity = managedType === "directory" ? "unknown" : managedType === "missing" ? "unknown" : "drifted";
@@ -10698,7 +10759,7 @@ var StashLifecycleImplementation = class {
             hostObservation: {
               override: "unknown",
               discovery: "absent",
-              refresh: deployment.host === "claude-code" ? "live" : "restart-required"
+              refresh: lifecycleRefreshObservation(deployment.host)
             }
           });
           continue;
@@ -10711,7 +10772,7 @@ var StashLifecycleImplementation = class {
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
-              refresh: deployment.host === "claude-code" ? "live" : "restart-required"
+              refresh: lifecycleRefreshObservation(deployment.host)
             }
           });
           continue;
@@ -10726,7 +10787,7 @@ var StashLifecycleImplementation = class {
             hostObservation: {
               override: "unknown",
               discovery: "present",
-              refresh: deployment.host === "claude-code" ? "live" : "restart-required"
+              refresh: lifecycleRefreshObservation(deployment.host)
             }
           });
         } catch {
@@ -10737,7 +10798,7 @@ var StashLifecycleImplementation = class {
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
-              refresh: deployment.host === "claude-code" ? "live" : "restart-required"
+              refresh: lifecycleRefreshObservation(deployment.host)
             }
           });
         }
@@ -10764,8 +10825,14 @@ var StashLifecycleImplementation = class {
   }
 };
 async function createStashLifecycle(options = {}) {
-  const loaded = await loadConfiguration(options);
-  const managedRoot = path6.resolve(
+  const effectiveOptions = options.catalogs && !options.managedRoot ? {
+    ...options,
+    managedRoot: path8.resolve(
+      process.env.STASH_MANAGED_HOME ?? platformManagedPath()
+    )
+  } : options;
+  const loaded = await loadConfiguration(effectiveOptions);
+  const managedRoot = path8.resolve(
     loaded.configuration.managedRoot ?? options.managedRoot ?? platformManagedPath()
   );
   return new StashLifecycleImplementation(
@@ -10865,19 +10932,25 @@ function lifecycleTarget(args) {
     );
   }
   const scope = flag(args, "scope");
-  if (scope !== void 0 && scope !== "user" && scope !== "workspace" && scope !== "custom") {
+  if (scope !== void 0 && scope !== "user" && scope !== "workspace") {
     throw new StashError(
       "invalid-argument",
-      "--scope must be user, workspace, or custom.",
+      "--scope must be user or workspace.",
       2
     );
   }
   const root = flag(args, "host-root");
+  if (root) {
+    throw new StashError(
+      "unsupported-host-root",
+      "Custom host roots are not supported; lifecycle targets use documented user skill directories.",
+      2
+    );
+  }
   const workspace = flag(args, "workspace");
   return {
     host,
     ...scope ? { scope } : {},
-    ...root ? { root } : {},
     ...workspace ? { workspace } : {}
   };
 }
@@ -10968,8 +11041,7 @@ Configuration:
 
 Lifecycle targeting:
   --host <host>         codex, claude-code, antigravity-ide, or antigravity-cli.
-  --scope <scope>       user or custom (default: user; workspace is rejected).
-  --host-root <path>    Explicit discovery root; implies a custom location.
+  --scope <scope>       user (default); workspace is rejected in this release.
 
 Result pagination never caps the total relevant result set.
 Lifecycle commands manage only the Stash-owned store and explicitly selected

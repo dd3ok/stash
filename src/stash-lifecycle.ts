@@ -7,21 +7,19 @@ import {
   realpath,
   rename,
   rm,
-  stat,
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { homedir, platform } from "node:os";
+import { homedir } from "node:os";
 import path from "node:path";
 import { parse } from "yaml";
 import type {
-  CreateStashCatalogOptions,
+  CreateStashLifecycleOptions,
   LifecycleActivateRequest,
   LifecycleArchiveRequest,
   LifecycleDeactivateRequest,
   LifecycleDeployment,
   LifecycleHost,
-  LifecycleHostTarget,
   LifecycleInstallRequest,
   LifecycleMutationResult,
   LifecycleScope,
@@ -35,51 +33,29 @@ import type {
 import { StashError } from "./types.js";
 import { loadConfiguration } from "./internal/configuration.js";
 import {
+  lifecycleRefreshObservation,
+  lifecycleReloadRequired,
+  resolveLifecycleTarget,
+} from "./internal/lifecycle-host-policy.js";
+import {
+  fingerprintTree,
+  TreeFingerprintError,
+  type TreeFingerprintEntry,
+} from "./internal/tree-fingerprint.js";
+import {
   isPathInside,
+  pathIdentity,
   platformManagedPath,
   sha256,
 } from "./internal/util.js";
 
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const MAX_FILES = 10_000;
-const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 const STORE_SCHEMA_VERSION = 1 as const;
-const WINDOWS_RESERVED_NAMES = new Set([
-  "con",
-  "prn",
-  "aux",
-  "nul",
-  "com1",
-  "com2",
-  "com3",
-  "com4",
-  "com5",
-  "com6",
-  "com7",
-  "com8",
-  "com9",
-  "lpt1",
-  "lpt2",
-  "lpt3",
-  "lpt4",
-  "lpt5",
-  "lpt6",
-  "lpt7",
-  "lpt8",
-  "lpt9",
-]);
-
-interface TreeEntry {
-  kind: "directory" | "file";
-  relativePath: string;
-  size?: number;
-  contentHash?: string;
-}
 
 interface TreeSnapshot {
   root: string;
   treeHash: string;
-  entries: TreeEntry[];
+  entries: TreeFingerprintEntry[];
   skillSource: string;
   sidecarSource?: string;
 }
@@ -188,153 +164,47 @@ function parseSkillMetadata(snapshot: TreeSnapshot): {
   };
 }
 
-function portablePathKey(relativePath: string): string {
-  return relativePath.normalize("NFKC").toLocaleLowerCase("und");
-}
-
-function validatePortableSegment(segment: string): void {
-  if (!segment || /[. ]$/u.test(segment)) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Portable skill paths cannot end in a dot or space: "${segment}".`,
-      3,
-    );
-  }
-  const base = segment.split(".", 1)[0]?.toLocaleLowerCase("und") ?? "";
-  if (WINDOWS_RESERVED_NAMES.has(base)) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Portable skill paths cannot use the reserved name "${segment}".`,
-      3,
-    );
-  }
-}
-
 async function snapshotTree(sourceRoot: string): Promise<TreeSnapshot> {
-  const rootInput = path.resolve(sourceRoot);
-  const rootInfo = await lstat(rootInput).catch((error: unknown) => {
-    throw new StashError(
-      "skill-unavailable",
-      `Skill directory is unavailable at "${rootInput}": ${String(error)}`,
-      4,
+  let fingerprint;
+  try {
+    fingerprint = await fingerprintTree(
+      sourceRoot,
+      new Set(["SKILL.md", "stash.meta.yaml"]),
     );
-  });
-  if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-    throw new StashError(
-      "unsafe-skill-tree",
-      `Skill root must be a real directory, not a link: "${rootInput}".`,
-      3,
-    );
-  }
-  const root = await realpath(rootInput);
-  const entries: TreeEntry[] = [];
-  const pathKeys = new Set<string>();
-  let fileCount = 0;
-  let totalBytes = 0;
-  let skillSource: string | undefined;
-  let sidecarSource: string | undefined;
-
-  async function walk(directory: string, relativeDirectory: string): Promise<void> {
-    const children = await readdir(directory, { withFileTypes: true });
-    children.sort((left, right) => left.name.localeCompare(right.name, "en"));
-    for (const child of children) {
-      if (relativeDirectory === "" && child.name === ".git") {
-        continue;
-      }
-      validatePortableSegment(child.name);
-      const relativePath = relativeDirectory
-        ? `${relativeDirectory}/${child.name}`
-        : child.name;
-      const key = portablePathKey(relativePath);
-      if (pathKeys.has(key)) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Case-insensitive path collision at "${relativePath}".`,
-          3,
-        );
-      }
-      pathKeys.add(key);
-      const childPath = path.join(directory, child.name);
-      const before = await lstat(childPath);
-      if (before.isSymbolicLink()) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Symlinks and junctions are not allowed: "${relativePath}".`,
-          3,
-        );
-      }
-      if (before.isDirectory()) {
-        const canonical = await realpath(childPath);
-        if (!isPathInside(root, canonical)) {
-          throw new StashError(
-            "unsafe-skill-tree",
-            `Directory escapes the skill root: "${relativePath}".`,
-            3,
-          );
-        }
-        entries.push({ kind: "directory", relativePath });
-        await walk(childPath, relativePath);
-        continue;
-      }
-      if (!before.isFile()) {
-        throw new StashError(
-          "unsafe-skill-tree",
-          `Only regular files and directories are allowed: "${relativePath}".`,
-          3,
-        );
-      }
-      fileCount += 1;
-      totalBytes += before.size;
-      if (fileCount > MAX_FILES || totalBytes > MAX_TOTAL_BYTES) {
-        throw new StashError(
-          "skill-too-large",
-          `Skill exceeds ${MAX_FILES} files or ${MAX_TOTAL_BYTES} bytes.`,
-          3,
-        );
-      }
-      const content = await readFile(childPath);
-      const after = await stat(childPath);
-      if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-        throw new StashError(
-          "source-changed",
-          `Skill changed while it was being read: "${relativePath}".`,
-          4,
-        );
-      }
-      const contentHash = sha256(content);
-      entries.push({
-        kind: "file",
-        relativePath,
-        size: content.length,
-        contentHash,
-      });
-      if (relativePath === "SKILL.md") {
-        skillSource = content.toString("utf8");
-      } else if (relativePath === "stash.meta.yaml") {
-        sidecarSource = content.toString("utf8");
-      }
+  } catch (error) {
+    if (!(error instanceof TreeFingerprintError)) {
+      throw error;
     }
+    if (error.failure === "root-unavailable") {
+      throw new StashError(
+        "skill-unavailable",
+        `Skill directory is unavailable at "${path.resolve(sourceRoot)}": ${String(error.detail ?? error.message)}`,
+        4,
+      );
+    }
+    if (error.failure === "tree-too-large") {
+      throw new StashError("skill-too-large", error.message, 3);
+    }
+    if (error.failure === "tree-changed") {
+      throw new StashError("source-changed", error.message, 4);
+    }
+    throw new StashError("unsafe-skill-tree", error.message, 3);
   }
-
-  await walk(root, "");
+  const skillSource = fingerprint.captured.get("SKILL.md")?.toString("utf8");
   if (skillSource === undefined) {
     throw new StashError(
       "invalid-skill",
-      `Skill root must contain SKILL.md: "${root}".`,
+      `Skill root must contain SKILL.md: "${fingerprint.root}".`,
       3,
     );
   }
-  const fingerprint = entries
-    .map((entry) =>
-      entry.kind === "directory"
-        ? `D\0${entry.relativePath}`
-        : `F\0${entry.relativePath}\0${entry.size}\0${entry.contentHash}`,
-    )
-    .join("\n");
+  const sidecarSource = fingerprint.captured
+    .get("stash.meta.yaml")
+    ?.toString("utf8");
   return {
-    root,
-    treeHash: sha256(fingerprint),
-    entries,
+    root: fingerprint.root,
+    treeHash: fingerprint.treeHash,
+    entries: fingerprint.entries,
     skillSource,
     ...(sidecarSource !== undefined ? { sidecarSource } : {}),
   };
@@ -388,19 +258,7 @@ async function pathType(target: string): Promise<"missing" | "directory" | "link
 }
 
 function samePath(left: string, right: string): boolean {
-  const normalizedLeft = path.resolve(left).normalize("NFKC");
-  const normalizedRight = path.resolve(right).normalize("NFKC");
-  return platform() === "win32"
-    ? normalizedLeft.toLocaleLowerCase("und") ===
-        normalizedRight.toLocaleLowerCase("und")
-    : normalizedLeft === normalizedRight;
-}
-
-function pathIdentity(value: string): string {
-  const normalized = path.resolve(value).normalize("NFKC");
-  return platform() === "win32"
-    ? normalized.toLocaleLowerCase("und")
-    : normalized;
+  return pathIdentity(left) === pathIdentity(right);
 }
 
 function targetIdentity(target: {
@@ -409,62 +267,6 @@ function targetIdentity(target: {
   root: string;
 }): string {
   return `${target.host}:${target.scope}:${pathIdentity(target.root)}`;
-}
-
-function resolveHostRoot(target: LifecycleHostTarget): {
-  host: LifecycleHost;
-  scope: LifecycleScope;
-  root: string;
-} {
-  if (target.host === "antigravity-cli") {
-    throw new StashError(
-      "unsupported-host-layout",
-      "Antigravity CLI standalone skills use flat Markdown in both user and workspace scopes; folder lifecycle is unsupported.",
-      2,
-    );
-  }
-  if (target.scope === "workspace") {
-    throw new StashError(
-      "unsupported-host-scope",
-      "Workspace lifecycle targets are not supported in this release.",
-      2,
-    );
-  }
-  if (target.root) {
-    return {
-      host: target.host,
-      scope: target.scope ?? "custom",
-      root: path.resolve(target.root),
-    };
-  }
-  const scope = target.scope ?? "user";
-  if (scope === "custom") {
-    throw new StashError(
-      "invalid-argument",
-      "A custom lifecycle target requires root.",
-      2,
-    );
-  }
-  switch (target.host) {
-    case "codex":
-      return {
-        host: target.host,
-        scope,
-        root: path.join(homedir(), ".agents", "skills"),
-      };
-    case "claude-code":
-      return {
-        host: target.host,
-        scope,
-        root: path.join(homedir(), ".claude", "skills"),
-      };
-    case "antigravity-ide":
-      return {
-        host: target.host,
-        scope,
-        root: path.join(homedir(), ".gemini", "config", "skills"),
-      };
-  }
 }
 
 async function isPluginContained(source: string): Promise<boolean> {
@@ -492,6 +294,7 @@ async function isPluginContained(source: string): Promise<boolean> {
 class StashLifecycleImplementation implements StashLifecycle {
   readonly #managedRoot: string;
   readonly #now: () => number;
+  readonly #lifecycleHome = path.resolve(homedir());
 
   constructor(managedRoot: string, now: () => number) {
     this.#managedRoot = path.resolve(managedRoot);
@@ -749,12 +552,16 @@ class StashLifecycleImplementation implements StashLifecycle {
     return owner;
   }
 
-  #ownerIsAlive(owner: LifecycleLockOwner): boolean {
+  #ownerState(owner: LifecycleLockOwner): "alive" | "dead" | "unknown" {
     try {
       process.kill(owner.pid, 0);
-      return true;
-    } catch {
-      return false;
+      return "alive";
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : "";
+      return code === "ESRCH" ? "dead" : "unknown";
     }
   }
 
@@ -815,10 +622,10 @@ class StashLifecycleImplementation implements StashLifecycle {
         );
       }
       const owner = await this.#readLockOwner(lockPath);
-      if (this.#ownerIsAlive(owner)) {
+      if (this.#ownerState(owner) !== "dead") {
         throw new StashError(
           "lifecycle-busy",
-          `Another lifecycle operation holds "${lockPath}".`,
+          `Lifecycle ownership at "${lockPath}" is live or cannot be safely probed.`,
           4,
         );
       }
@@ -855,10 +662,10 @@ class StashLifecycleImplementation implements StashLifecycle {
         return owner;
       }
       const existing = await this.#readLockOwner(lockPath);
-      if (this.#ownerIsAlive(existing)) {
+      if (this.#ownerState(existing) !== "dead") {
         throw new StashError(
           "lifecycle-busy",
-          `Another lifecycle operation holds "${lockPath}".`,
+          `Lifecycle ownership at "${lockPath}" is live or cannot be safely probed.`,
           4,
         );
       }
@@ -1117,7 +924,10 @@ class StashLifecycleImplementation implements StashLifecycle {
     request: LifecycleArchiveRequest,
   ): Promise<LifecycleMutationResult> {
     return this.#withLock(async () => {
-      const resolvedTarget = resolveHostRoot(request.target);
+      const resolvedTarget = resolveLifecycleTarget(
+        request.target,
+        this.#lifecycleHome,
+      );
       resolvedTarget.root = await this.#canonicalHostRoot(
         resolvedTarget.root,
         false,
@@ -1146,9 +956,42 @@ class StashLifecycleImplementation implements StashLifecycle {
       const sourceSnapshot = await snapshotTree(source);
       const metadata = parseSkillMetadata(sourceSnapshot);
       const managedPath = path.join(this.#managedRoot, metadata.name);
+      const existingRecord = await this.#readRecord(metadata.name);
+      const managedType = await pathType(managedPath);
+      const selectedTargetId = targetIdentity(resolvedTarget);
+      const trackedDeployment = existingRecord?.deployments.find(
+        (deployment) =>
+          samePath(deployment.path, source) &&
+          deployment.targetId === selectedTargetId,
+      );
+      if (existingRecord && trackedDeployment) {
+        if (managedType !== "directory") {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill "${metadata.name}" is unavailable; refusing to archive its tracked deployment.`,
+            3,
+          );
+        }
+        const managedSnapshot = await snapshotTree(managedPath);
+        if (
+          managedSnapshot.treeHash !== existingRecord.treeHash ||
+          sourceSnapshot.treeHash !== existingRecord.treeHash ||
+          trackedDeployment.treeHash !== existingRecord.treeHash
+        ) {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill or tracked deployment "${metadata.name}" drifted; refusing archive.`,
+            3,
+          );
+        }
+        return this.#deactivateDeployment(
+          existingRecord,
+          managedPath,
+          resolvedTarget,
+        );
+      }
       const managedExistedBefore =
-        (await pathType(managedPath)) !== "missing" ||
-        (await this.#readRecord(metadata.name)) !== undefined;
+        managedType !== "missing" || existingRecord !== undefined;
       const tombstoneParent = path.dirname(resolvedTarget.root);
       await mkdir(tombstoneParent, { recursive: true });
       const tombstone = path.join(
@@ -1254,7 +1097,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           3,
         );
       }
-      const target = resolveHostRoot(request.target);
+      const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, true);
       const deploymentPath = path.join(target.root, request.name);
       const targetId = targetIdentity(target);
@@ -1275,7 +1118,7 @@ class StashLifecycleImplementation implements StashLifecycle {
               managedPath,
               treeHash: record.treeHash,
               deployment: tracked,
-              reloadRequired: target.host !== "claude-code",
+              reloadRequired: lifecycleReloadRequired(target.host),
               warning:
                 "DEPLOYED means present in a discovery root; host enable/disable overrides were not changed.",
             };
@@ -1340,7 +1183,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           managedPath,
           treeHash: record.treeHash,
           deployment,
-          reloadRequired: target.host !== "claude-code",
+          reloadRequired: lifecycleReloadRequired(target.host),
           warning:
             "DEPLOYED means present in a discovery root; host enable/disable overrides were not changed.",
         };
@@ -1350,6 +1193,110 @@ class StashLifecycleImplementation implements StashLifecycle {
         }
       }
     });
+  }
+
+  async #deactivateDeployment(
+    record: ManagedSkillRecord,
+    managedPath: string,
+    target: { host: LifecycleHost; scope: LifecycleScope; root: string },
+  ): Promise<LifecycleMutationResult> {
+    const deploymentPath = path.join(target.root, record.name);
+    const targetId = targetIdentity(target);
+    const deployment = record.deployments.find(
+      (candidate) =>
+        samePath(candidate.path, deploymentPath) &&
+        candidate.targetId === targetId,
+    );
+    if (
+      !deployment ||
+      deployment.ownership !== "stash" ||
+      deployment.skillId !== record.skillId
+    ) {
+      throw new StashError(
+        "detached-deployment",
+        `Stash did not create deployment "${deploymentPath}"; refusing to remove it.`,
+        3,
+      );
+    }
+    const existing = await pathType(deploymentPath);
+    if (existing === "missing") {
+      record.deployments = record.deployments.filter(
+        (candidate) => !samePath(candidate.path, deploymentPath),
+      );
+      record.lastValidatedAt = new Date(this.#now()).toISOString();
+      await this.#writeRecord(record);
+      return {
+        status: "deactivated",
+        name: record.name,
+        skillId: record.skillId,
+        managedPath,
+        treeHash: record.treeHash,
+        warning: "The tracked deployment was already missing.",
+      };
+    }
+    if (existing !== "directory") {
+      throw new StashError(
+        "deployment-drift",
+        `Tracked deployment is no longer a real directory: "${deploymentPath}".`,
+        3,
+      );
+    }
+    const deployedSnapshot = await snapshotTree(deploymentPath);
+    if (deployedSnapshot.treeHash !== deployment.treeHash) {
+      throw new StashError(
+        "deployment-drift",
+        `Tracked deployment changed and will not be removed: "${deploymentPath}".`,
+        3,
+      );
+    }
+    const tombstone = path.join(
+      path.dirname(target.root),
+      `.stash-deactivate-${record.name}-${randomUUID()}`,
+    );
+    await rename(deploymentPath, tombstone);
+    try {
+      const movedSnapshot = await snapshotTree(tombstone);
+      if (movedSnapshot.treeHash !== deployment.treeHash) {
+        await rename(tombstone, deploymentPath);
+        throw new StashError(
+          "deployment-drift",
+          `Deployment changed during deactivation and was restored: "${deploymentPath}".`,
+          3,
+        );
+      }
+      const previousDeployments = record.deployments;
+      record.deployments = previousDeployments.filter(
+        (candidate) => !samePath(candidate.path, deploymentPath),
+      );
+      record.lastValidatedAt = new Date(this.#now()).toISOString();
+      try {
+        await this.#writeRecord(record);
+      } catch (error) {
+        record.deployments = previousDeployments;
+        await rename(tombstone, deploymentPath).catch(() => undefined);
+        throw error;
+      }
+      let warning: string | undefined;
+      try {
+        await rm(tombstone, { recursive: true, force: false });
+      } catch (error) {
+        warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
+      }
+      return {
+        status: "deactivated",
+        name: record.name,
+        skillId: record.skillId,
+        managedPath,
+        treeHash: record.treeHash,
+        reloadRequired: lifecycleReloadRequired(target.host),
+        ...(warning ? { warning } : {}),
+      };
+    } catch (error) {
+      if ((await pathType(tombstone)) !== "missing") {
+        await rename(tombstone, deploymentPath).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async deactivate(
@@ -1365,105 +1312,9 @@ class StashLifecycleImplementation implements StashLifecycle {
         );
       }
       const managedPath = path.join(this.#managedRoot, request.name);
-      const target = resolveHostRoot(request.target);
+      const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, false, true);
-      const deploymentPath = path.join(target.root, request.name);
-      const targetId = targetIdentity(target);
-      const deployment = record.deployments.find(
-        (candidate) =>
-          samePath(candidate.path, deploymentPath) &&
-          candidate.targetId === targetId,
-      );
-      if (
-        !deployment ||
-        deployment.ownership !== "stash" ||
-        deployment.skillId !== record.skillId
-      ) {
-        throw new StashError(
-          "detached-deployment",
-          `Stash did not create deployment "${deploymentPath}"; refusing to remove it.`,
-          3,
-        );
-      }
-      const existing = await pathType(deploymentPath);
-      if (existing === "missing") {
-        record.deployments = record.deployments.filter(
-          (candidate) => !samePath(candidate.path, deploymentPath),
-        );
-        record.lastValidatedAt = new Date(this.#now()).toISOString();
-        await this.#writeRecord(record);
-        return {
-          status: "deactivated",
-          name: record.name,
-          skillId: record.skillId,
-          managedPath,
-          treeHash: record.treeHash,
-          warning: "The tracked deployment was already missing.",
-        };
-      }
-      if (existing !== "directory") {
-        throw new StashError(
-          "deployment-drift",
-          `Tracked deployment is no longer a real directory: "${deploymentPath}".`,
-          3,
-        );
-      }
-      const deployedSnapshot = await snapshotTree(deploymentPath);
-      if (deployedSnapshot.treeHash !== deployment.treeHash) {
-        throw new StashError(
-          "deployment-drift",
-          `Tracked deployment changed and will not be removed: "${deploymentPath}".`,
-          3,
-        );
-      }
-      const tombstone = path.join(
-        path.dirname(target.root),
-        `.stash-deactivate-${record.name}-${randomUUID()}`,
-      );
-      await rename(deploymentPath, tombstone);
-      try {
-        const movedSnapshot = await snapshotTree(tombstone);
-        if (movedSnapshot.treeHash !== deployment.treeHash) {
-          await rename(tombstone, deploymentPath);
-          throw new StashError(
-            "deployment-drift",
-            `Deployment changed during deactivation and was restored: "${deploymentPath}".`,
-            3,
-          );
-        }
-        const previousDeployments = record.deployments;
-        record.deployments = previousDeployments.filter(
-          (candidate) => !samePath(candidate.path, deploymentPath),
-        );
-        record.lastValidatedAt = new Date(this.#now()).toISOString();
-        try {
-          await this.#writeRecord(record);
-        } catch (error) {
-          record.deployments = previousDeployments;
-          await rename(tombstone, deploymentPath).catch(() => undefined);
-          throw error;
-        }
-        let warning: string | undefined;
-        try {
-          await rm(tombstone, { recursive: true, force: false });
-        } catch (error) {
-          warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
-        }
-        return {
-          status: "deactivated",
-          name: record.name,
-          skillId: record.skillId,
-          managedPath,
-          treeHash: record.treeHash,
-          reloadRequired: target.host !== "claude-code",
-          ...(warning ? { warning } : {}),
-        };
-      } catch (error) {
-        if ((await pathType(tombstone)) !== "missing") {
-          await rename(tombstone, deploymentPath).catch(() => undefined);
-        }
-        throw error;
-      }
+      return this.#deactivateDeployment(record, managedPath, target);
     });
   }
 
@@ -1526,10 +1377,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             hostObservation: {
               override: "unknown",
               discovery: "absent",
-              refresh:
-                deployment.host === "claude-code"
-                  ? "live"
-                  : "restart-required",
+              refresh: lifecycleRefreshObservation(deployment.host),
             },
           });
           continue;
@@ -1542,10 +1390,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
-              refresh:
-                deployment.host === "claude-code"
-                  ? "live"
-                  : "restart-required",
+              refresh: lifecycleRefreshObservation(deployment.host),
             },
           });
           continue;
@@ -1562,10 +1407,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             hostObservation: {
               override: "unknown",
               discovery: "present",
-              refresh:
-                deployment.host === "claude-code"
-                  ? "live"
-                  : "restart-required",
+              refresh: lifecycleRefreshObservation(deployment.host),
             },
           });
         } catch {
@@ -1576,10 +1418,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
-              refresh:
-                deployment.host === "claude-code"
-                  ? "live"
-                  : "restart-required",
+              refresh: lifecycleRefreshObservation(deployment.host),
             },
           });
         }
@@ -1607,9 +1446,18 @@ class StashLifecycleImplementation implements StashLifecycle {
 }
 
 export async function createStashLifecycle(
-  options: CreateStashCatalogOptions = {},
+  options: CreateStashLifecycleOptions = {},
 ): Promise<StashLifecycle> {
-  const loaded = await loadConfiguration(options);
+  const effectiveOptions =
+    options.catalogs && !options.managedRoot
+      ? {
+          ...options,
+          managedRoot: path.resolve(
+            process.env.STASH_MANAGED_HOME ?? platformManagedPath(),
+          ),
+        }
+      : options;
+  const loaded = await loadConfiguration(effectiveOptions);
   const managedRoot = path.resolve(
     loaded.configuration.managedRoot ??
       options.managedRoot ??

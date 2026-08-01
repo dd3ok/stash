@@ -11,6 +11,7 @@ export type {
   CatalogSource,
   CatalogWarning,
   CreateStashCatalogOptions,
+  CreateStashLifecycleOptions,
   DoctorRequest,
   DoctorResult,
   LifecycleActivateRequest,

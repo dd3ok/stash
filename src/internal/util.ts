@@ -125,6 +125,13 @@ export function isPathInside(root: string, candidate: string): boolean {
   );
 }
 
+export function pathIdentity(value: string): string {
+  const normalized = path.resolve(value).normalize("NFKC");
+  return platform() === "win32"
+    ? normalized.toLocaleLowerCase("und")
+    : normalized;
+}
+
 export function normalizeRelativePath(value: string): string | undefined {
   if (!value || path.isAbsolute(value)) {
     return undefined;

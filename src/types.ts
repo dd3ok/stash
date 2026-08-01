@@ -7,7 +7,7 @@ export type LifecycleHost =
   | "claude-code"
   | "antigravity-ide"
   | "antigravity-cli";
-export type LifecycleScope = "user" | "workspace" | "custom";
+export type LifecycleScope = "user" | "workspace";
 export type CompatibilityState = "supported" | "partial" | "unsupported" | "unknown";
 export type TrustState = "trusted" | "reviewed" | "unreviewed" | "quarantined";
 export type RelevanceTier = "exact" | "strong" | "material" | "possible";
@@ -114,6 +114,8 @@ export interface CreateStashCatalogOptions {
   defaults?: Partial<StashDefaults>;
   now?: () => number;
 }
+
+export type CreateStashLifecycleOptions = CreateStashCatalogOptions;
 
 export interface ResolveFilters {
   catalogIds?: string[];
@@ -296,7 +298,6 @@ export interface ManagedSkillRecord {
 export interface LifecycleHostTarget {
   host: LifecycleHost;
   scope?: LifecycleScope;
-  root?: string;
   workspace?: string;
 }
 

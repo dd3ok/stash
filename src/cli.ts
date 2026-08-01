@@ -122,21 +122,26 @@ function lifecycleTarget(args: ParsedArguments): LifecycleHostTarget {
   if (
     scope !== undefined &&
     scope !== "user" &&
-    scope !== "workspace" &&
-    scope !== "custom"
+    scope !== "workspace"
   ) {
     throw new StashError(
       "invalid-argument",
-      "--scope must be user, workspace, or custom.",
+      "--scope must be user or workspace.",
       2,
     );
   }
   const root = flag(args, "host-root");
+  if (root) {
+    throw new StashError(
+      "unsupported-host-root",
+      "Custom host roots are not supported; lifecycle targets use documented user skill directories.",
+      2,
+    );
+  }
   const workspace = flag(args, "workspace");
   return {
     host: host as LifecycleHost,
     ...(scope ? { scope } : {}),
-    ...(root ? { root } : {}),
     ...(workspace ? { workspace } : {}),
   };
 }
@@ -230,8 +235,7 @@ Configuration:
 
 Lifecycle targeting:
   --host <host>         codex, claude-code, antigravity-ide, or antigravity-cli.
-  --scope <scope>       user or custom (default: user; workspace is rejected).
-  --host-root <path>    Explicit discovery root; implies a custom location.
+  --scope <scope>       user (default); workspace is rejected in this release.
 
 Result pagination never caps the total relevant result set.
 Lifecycle commands manage only the Stash-owned store and explicitly selected

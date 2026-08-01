@@ -19,12 +19,17 @@ Validate the Codex skill and plugin with the commands and prerequisites in
 
 ## Change rules
 
-- Keep the `StashCatalog` Interface small.
-- Keep vendor logic out of core search and path handling.
+- Keep the `StashCatalog` read Interface and `StashLifecycle` write Interface
+  small and authority-separated.
+- Keep vendor packaging in generated Adapters. Centralize the narrow lifecycle
+  host-path/reload policy in `src/internal/lifecycle-host-policy.ts`, and keep it
+  out of catalog search and safe-read path handling.
 - Add a failing golden or Interface test before changing relevance behavior.
 - Preserve no-match abstention.
 - Preserve all-relevant totals independently from page size.
-- Never add catalog mutation to a read path.
+- Never add catalog mutation to a read path. An explicit lifecycle archive may
+  mutate only the exact standalone target selected by the caller; a catalog
+  registration never grants that authority.
 - Do not add remote calls or telemetry by default.
 - Update `docs/vendor-support.md` only from current first-party documentation and live contract tests.
 

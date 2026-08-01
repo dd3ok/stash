@@ -1,11 +1,7 @@
 import {
-  lstat,
   readFile,
   readdir,
-  realpath,
-  stat,
 } from "node:fs/promises";
-import { platform } from "node:os";
 import path from "node:path";
 import type {
   CatalogIndex,
@@ -13,17 +9,8 @@ import type {
   RelatedSkillCopy,
   SkillRecord,
 } from "../types.js";
-import { isPathInside, sha256 } from "./util.js";
-
-const MAX_FILES = 10_000;
-const MAX_TOTAL_BYTES = 256 * 1024 * 1024;
-
-interface TreeEntry {
-  kind: "directory" | "file";
-  relativePath: string;
-  size?: number;
-  contentHash?: string;
-}
+import { fingerprintTree } from "./tree-fingerprint.js";
+import { pathIdentity, sha256 } from "./util.js";
 
 interface ProjectionTarget {
   kind: RelatedSkillCopy["kind"];
@@ -32,14 +19,10 @@ interface ProjectionTarget {
   deployment?: ManagedSkillRecord["deployments"][number];
 }
 
-function pathIdentity(value: string): string {
-  const normalized = path.resolve(value).normalize("NFKC");
-  return platform() === "win32"
-    ? normalized.toLocaleLowerCase("und")
-    : normalized;
-}
-
-function validRecord(value: unknown): value is ManagedSkillRecord {
+function validRecord(
+  value: unknown,
+  expectedName: string,
+): value is ManagedSkillRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -47,81 +30,52 @@ function validRecord(value: unknown): value is ManagedSkillRecord {
   return (
     record.schemaVersion === 1 &&
     typeof record.skillId === "string" &&
-    typeof record.name === "string" &&
-    typeof record.treeHash === "string" &&
+    record.skillId.length > 0 &&
+    record.name === expectedName &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) &&
+    /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) &&
     record.source !== null &&
     typeof record.source === "object" &&
+    (record.source.kind === "local-import" ||
+      record.source.kind === "standalone-archive") &&
     typeof record.source.location === "string" &&
-    Array.isArray(record.deployments)
+    path.isAbsolute(record.source.location) &&
+    typeof record.source.importedAt === "string" &&
+    (record.source.url === undefined ||
+      typeof record.source.url === "string") &&
+    (record.source.revision === undefined ||
+      typeof record.source.revision === "string") &&
+    Array.isArray(record.deployments) &&
+    record.deployments.every(
+      (deployment) =>
+        deployment !== null &&
+        typeof deployment === "object" &&
+        typeof deployment.deploymentId === "string" &&
+        deployment.deploymentId.length > 0 &&
+        deployment.skillId === record.skillId &&
+        (deployment.host === "codex" ||
+          deployment.host === "claude-code" ||
+          deployment.host === "antigravity-ide") &&
+        (deployment.scope === "user" || deployment.scope === "workspace") &&
+        deployment.method === "copy" &&
+        deployment.ownership === "stash" &&
+        typeof deployment.root === "string" &&
+        path.isAbsolute(deployment.root) &&
+        typeof deployment.path === "string" &&
+        path.isAbsolute(deployment.path) &&
+        pathIdentity(deployment.path) ===
+          pathIdentity(path.join(deployment.root, record.name)) &&
+        deployment.targetId ===
+          `${deployment.host}:${deployment.scope}:${pathIdentity(deployment.root)}` &&
+        /^sha256:[0-9a-f]{64}$/u.test(deployment.treeHash) &&
+        typeof deployment.deployedAt === "string",
+    )
   );
 }
 
 async function treeHash(rootInput: string): Promise<string | undefined> {
   try {
-    const rootInfo = await lstat(rootInput);
-    if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-      return undefined;
-    }
-    const root = await realpath(rootInput);
-    const entries: TreeEntry[] = [];
-    let files = 0;
-    let totalBytes = 0;
-
-    async function walk(directory: string, relativeDirectory: string) {
-      const children = await readdir(directory, { withFileTypes: true });
-      children.sort((left, right) => left.name.localeCompare(right.name, "en"));
-      for (const child of children) {
-        if (relativeDirectory === "" && child.name === ".git") {
-          continue;
-        }
-        const relativePath = relativeDirectory
-          ? `${relativeDirectory}/${child.name}`
-          : child.name;
-        const childPath = path.join(directory, child.name);
-        const before = await lstat(childPath);
-        if (before.isSymbolicLink()) {
-          throw new Error("linked tree");
-        }
-        if (before.isDirectory()) {
-          const canonical = await realpath(childPath);
-          if (!isPathInside(root, canonical)) {
-            throw new Error("tree escape");
-          }
-          entries.push({ kind: "directory", relativePath });
-          await walk(childPath, relativePath);
-          continue;
-        }
-        if (!before.isFile()) {
-          throw new Error("special file");
-        }
-        files += 1;
-        totalBytes += before.size;
-        if (files > MAX_FILES || totalBytes > MAX_TOTAL_BYTES) {
-          throw new Error("tree too large");
-        }
-        const content = await readFile(childPath);
-        const after = await stat(childPath);
-        if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
-          throw new Error("tree changed");
-        }
-        entries.push({
-          kind: "file",
-          relativePath,
-          size: content.length,
-          contentHash: sha256(content),
-        });
-      }
-    }
-
-    await walk(root, "");
-    const fingerprint = entries
-      .map((entry) =>
-        entry.kind === "directory"
-          ? `D\0${entry.relativePath}`
-          : `F\0${entry.relativePath}\0${entry.size}\0${entry.contentHash}`,
-      )
-      .join("\n");
-    return sha256(fingerprint);
+    return (await fingerprintTree(rootInput)).treeHash;
   } catch {
     return undefined;
   }
@@ -184,7 +138,8 @@ export async function projectManagedCopies(
       const parsed = JSON.parse(
         await readFile(path.join(recordsRoot, file), "utf8"),
       ) as unknown;
-      if (!validRecord(parsed)) {
+      const expectedName = file.slice(0, -".json".length);
+      if (!validRecord(parsed, expectedName)) {
         throw new Error("invalid record");
       }
       managedRecords.set(parsed.name, parsed);
@@ -215,17 +170,29 @@ export async function projectManagedCopies(
     }
   }
 
+  const events: string[] = [];
   const canonicalBySkillId = new Map<string, SkillRecord>();
   for (const record of managedIndex.records) {
     const managedRecord = managedRecords.get(record.name);
     if (managedRecord) {
       record.managedSkillId = managedRecord.skillId;
       record.relatedCopies = [];
+      record.source = {
+        ...record.source,
+        ...(managedRecord.source.url
+          ? { url: managedRecord.source.url }
+          : {}),
+        ...(managedRecord.source.revision
+          ? { revision: managedRecord.source.revision }
+          : {}),
+      };
+      events.push(
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}`,
+      );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }
   }
 
-  const events: string[] = [];
   for (const index of indexes) {
     if (index.catalogId === "managed") {
       continue;

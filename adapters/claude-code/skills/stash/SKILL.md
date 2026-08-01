@@ -115,17 +115,20 @@ only the temporary staging directory after a successful managed import.
 
 ### Archive a standalone skill
 
-Resolve exactly one standalone skill directory and require its host root:
+Resolve exactly one standalone skill directory under the host's documented
+user skill root:
 
 ```text
 node <stash-cli> archive <name> --host <host> [--scope user] --json
 ```
 
-An explicit directory path still requires `--host`; use `--scope custom
---host-root <root>` when selecting a non-default discovery root. The source
-must be an exact child of that root. Explain that archive removes the source
-only after a journaled copy, validation, hash check, and commit. Never archive
-a plugin-contained skill; delegate plugin lifecycle to the host.
+The source must be an exact child of the documented user root. Arbitrary custom
+roots and workspace roots are unsupported because Stash cannot prove that the
+host discovers them. Explain that archive removes the source only after a
+journaled copy, validation, hash check, and commit. Never archive a
+plugin-contained skill; delegate plugin lifecycle to the host. If the exact
+path is already a verified Stash-owned deployment, archive must use tracked
+deactivation semantics and preserve the canonical copy.
 
 ### Deploy or withdraw a managed copy
 

@@ -112,8 +112,10 @@ stash deactivate rare-skill --host codex
 `install`, `import`, and `add` are aliases. `archive` is the destructive form:
 it verifies and stores an explicitly selected standalone skill before removing
 that source directory from host discovery. It never manages a plugin-contained
-skill. `activate` records a `deployed` copy; it does not claim that a host-level
-enable/disable override is enabled.
+skill. If the selected path is already a verified Stash-owned deployment,
+`archive` performs the same tracked withdrawal as `deactivate` and preserves
+the canonical copy. `activate` records a `deployed` copy; it does not claim that
+a host-level enable/disable override is enabled.
 
 The CLI imports local directories only. When a user explicitly asks the Stash
 skill to import a repository skill, the agent may stage the pinned revision
@@ -142,8 +144,9 @@ Antigravity adapters are generated, but should be tested against the target
 
 ## Boundaries
 
-- External source libraries remain read-only. Writes are restricted to the
-  Stash-managed root and explicit standalone lifecycle targets.
+- Catalog operations keep external source libraries read-only. Writes are
+  restricted to the non-overlapping Stash-managed root and exact standalone
+  lifecycle targets explicitly selected by the caller.
 - Search uses no network, embedding model, vector database, or second LLM
   router.
 - Reading a skill does not execute its scripts.

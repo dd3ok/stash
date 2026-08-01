@@ -31,7 +31,9 @@ flowchart TD
 The product has two deep Modules with different authority. `StashCatalog` is
 read-only across every configured catalog. `StashLifecycle` alone may write to
 the Stash-managed root or an explicitly selected standalone deployment target.
-It never mutates an external catalog, plugin, or vendor setting.
+A target root may also be registered for search, but catalog registration does
+not authorize the write; the explicit archive/deactivate request does. Plugin
+content and vendor settings remain outside lifecycle authority.
 
 The model keeps three independent dimensions: `catalogId` identifies local storage, `group` supplies functional taxonomy, and `source` records provenance. A source filter accepts an exact ID, display name, or URL. Resolve filters compose across those dimensions before exact lookup, listing, or discovery.
 
@@ -74,6 +76,8 @@ src/
 └── internal/
     ├── configuration.ts
     ├── catalog-index.ts
+    ├── lifecycle-host-policy.ts
+    ├── managed-projection.ts
     ├── search.ts
     └── util.ts
 ```
@@ -82,6 +86,10 @@ Responsibilities:
 
 - `configuration.ts`: resolve platform configuration and validate catalogs.
 - `catalog-index.ts`: canonicalize roots, discover skills, parse metadata, generate records, atomically cache indexes.
+- `lifecycle-host-policy.ts`: centralize the small, audited vendor discovery-root
+  and reload-observation policy used only by explicit lifecycle operations.
+- `managed-projection.ts`: fold verified managed-related copies without
+  changing the underlying indexes or raw-read refs.
 - `search.ts`: normalize text, score lexical evidence, classify relevance, and render compact records.
 - `util.ts`: hashing, cursor integrity, path containment, tokenization, platform locations.
 - `stash-catalog.ts`: orchestrate the Interface and normalize errors/results.
@@ -98,7 +106,10 @@ The vendor seam is real because there are multiple implementations:
 - Claude Code adds `disable-model-invocation: true`.
 - Antigravity uses different plugin manifests and has no documented manual-only field.
 
-Search and security behavior never live in an Adapter. Generated Adapters contain the same bundled CLI.
+Search and safe-read security behavior never live in an Adapter. Generated
+Adapters contain the same bundled CLI; vendor packaging stays in Adapter
+generation, while the narrow lifecycle target policy stays in one audited
+internal module and contract tests.
 
 ## Data flow
 
@@ -140,8 +151,10 @@ The index is not a source of truth.
 - Explicit `stash index`: rebuild.
 - `stash doctor`: scan without repairing or mutating the catalog.
 
-External catalog files are never written. The managed root is a separate
-source of truth owned by `StashLifecycle`.
+Catalog operations never write external catalog files. The managed root is a
+separate, non-overlapping source of truth owned by `StashLifecycle`. An explicit
+lifecycle target can share a root with a search registration, but only the
+selected standalone child is in write scope.
 
 ## Lifecycle data flow
 

@@ -90,7 +90,10 @@ lexical failure set justifies their operational cost.
 
 Preserve these invariants:
 
-- external catalogs are read-only;
+- catalog operations are read-only; explicit archive/deactivate authority is
+  limited to the exact standalone target or verified Stash-owned deployment;
+- managed storage never overlaps an external catalog by equality, nesting, or
+  filesystem alias;
 - lifecycle writes are limited to the managed root and explicit standalone
   targets;
 - lifecycle never overwrites, follows links, or deletes untracked/drifted paths;

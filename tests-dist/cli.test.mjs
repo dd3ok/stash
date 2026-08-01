@@ -66,7 +66,13 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
   const temp = await mkdtemp(path.join(tmpdir(), "stash-lifecycle-dist-test-"));
   const source = path.join(temp, "source", "rare-skill");
   const managedRoot = path.join(temp, "managed");
-  const hostRoot = path.join(temp, "host", "skills");
+  const sandboxHome = path.join(temp, "home");
+  const hostRoot = path.join(sandboxHome, ".agents", "skills");
+  const cliEnvironment = {
+    ...process.env,
+    HOME: sandboxHome,
+    USERPROFILE: sandboxHome,
+  };
   await mkdir(source, { recursive: true });
   await writeFile(
     path.join(source, "SKILL.md"),
@@ -81,7 +87,7 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "install",
         source,
         ...common,
-      ])
+      ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(installed.status, "stored");
@@ -93,7 +99,7 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "exact",
         "rare-skill",
         ...common,
-      ])
+      ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(resolved.status, "ok");
@@ -108,11 +114,9 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "--host",
         "codex",
         "--scope",
-        "custom",
-        "--host-root",
-        hostRoot,
+        "user",
         ...common,
-      ])
+      ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(deployed.status, "deployed");
@@ -127,11 +131,9 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "--host",
         "codex",
         "--scope",
-        "custom",
-        "--host-root",
-        hostRoot,
+        "user",
         ...common,
-      ])
+      ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(deactivated.status, "deactivated");

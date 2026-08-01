@@ -6,7 +6,10 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 
 ## Guarantees
 
-- Stash never edits external configured catalog files.
+- Catalog search, read, refresh, doctor, and install never edit external
+  configured catalog files. An explicit archive/deactivate target may share a
+  root with a search registration, but only that exact standalone child or a
+  verified Stash-owned deployment is writable.
 - Managed imports reject symlinks, junctions, special files, non-portable path
   names, case-insensitive collisions, oversized trees, and overwrites.
 - Lifecycle copies are staged and tree-hash verified before atomic rename.
@@ -16,8 +19,10 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
   path, and a committed tombstone is deleted only after its tree hash matches.
 - Deactivation requires matching Stash ownership, skill/deployment identity,
   target, and tree hash.
-- Catalog overlap grants no write authority. Hash-matching related copies are
-  folded only in the read projection; drifted or unrelated copies stay visible.
+- Catalog registration grants no write authority. Hash-matching related copies
+  are folded only in the read projection; drifted or unrelated copies stay
+  visible. Managed storage itself must not equal, contain, or sit inside an
+  external catalog, including through a filesystem alias.
 - Lifecycle lock ownership is atomically published. Proven-dead owners are
   reclaimed under a separate guard; malformed or live ownership fails closed.
 - Indexing does not execute scripts.
