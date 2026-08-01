@@ -1,7 +1,7 @@
 {
   "name": "@dd3ok/stash",
-  "version": "0.1.1",
-  "description": "Search a separate local Agent Skills library by name or task and load only the selected SKILL.md",
+  "version": "0.2.0",
+  "description": "Search read-only Agent Skills catalogs and manage an explicit local inactive skill store",
   "type": "module",
   "bin": {
     "stash": "./dist/cli.js"

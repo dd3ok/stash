@@ -1,4 +1,4 @@
 {
   "name": "stash",
-  "description": "Search and load local Agent Skills from a separate SKILL.md library on demand."
+  "description": "Search read-only Agent Skills catalogs and manage an explicit local inactive store."
 }

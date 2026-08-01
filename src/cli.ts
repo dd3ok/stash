@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
 import { createStashCatalog } from "./stash-catalog.js";
+import { createStashLifecycle } from "./stash-lifecycle.js";
 import {
   StashError,
   type CatalogRegistration,
+  type LifecycleHost,
+  type LifecycleHostTarget,
+  type LifecycleMutationResult,
   type ResolveResult,
 } from "./types.js";
 
@@ -78,6 +82,7 @@ function createOptions(args: ParsedArguments) {
   const catalogId = flag(args, "root-id") ?? "default";
   const configPath = flag(args, "config");
   const cacheDir = flag(args, "cache-dir");
+  const managedRoot = flag(args, "managed-root");
   const catalogs: CatalogRegistration[] | undefined = root
     ? [
         {
@@ -93,7 +98,51 @@ function createOptions(args: ParsedArguments) {
   return {
     ...(configPath ? { configPath } : {}),
     ...(cacheDir ? { cacheDir } : {}),
+    ...(managedRoot ? { managedRoot } : {}),
     ...(catalogs ? { catalogs } : {}),
+  };
+}
+
+function lifecycleTarget(args: ParsedArguments): LifecycleHostTarget {
+  const host = flag(args, "host");
+  const supported = new Set<LifecycleHost>([
+    "codex",
+    "claude-code",
+    "antigravity-ide",
+    "antigravity-cli",
+  ]);
+  if (!host || !supported.has(host as LifecycleHost)) {
+    throw new StashError(
+      "invalid-argument",
+      "--host must be codex, claude-code, antigravity-ide, or antigravity-cli.",
+      2,
+    );
+  }
+  const scope = flag(args, "scope");
+  if (
+    scope !== undefined &&
+    scope !== "user" &&
+    scope !== "workspace"
+  ) {
+    throw new StashError(
+      "invalid-argument",
+      "--scope must be user or workspace.",
+      2,
+    );
+  }
+  const root = flag(args, "host-root");
+  if (root) {
+    throw new StashError(
+      "unsupported-host-root",
+      "Custom host roots are not supported; lifecycle targets use documented user skill directories.",
+      2,
+    );
+  }
+  const workspace = flag(args, "workspace");
+  return {
+    host: host as LifecycleHost,
+    ...(scope ? { scope } : {}),
+    ...(workspace ? { workspace } : {}),
   };
 }
 
@@ -146,6 +195,21 @@ function printResolve(result: ResolveResult): void {
   }
 }
 
+function printLifecycle(result: LifecycleMutationResult): void {
+  process.stdout.write(
+    `${result.name}: ${result.status} (${result.treeHash})\nskill_id: ${result.skillId}\n${result.managedPath}\n`,
+  );
+  if (result.deployment) {
+    process.stdout.write(`deployment: ${result.deployment.path}\n`);
+  }
+  if (result.reloadRequired) {
+    process.stdout.write("Reload or restart the host before relying on discovery changes.\n");
+  }
+  if (result.warning) {
+    process.stdout.write(`warning: ${result.warning}\n`);
+  }
+}
+
 function usage(): string {
   return `Stash — on-demand search for local Agent Skills
 
@@ -156,14 +220,26 @@ Usage:
   stash read <ref> [--resource <path>] [--format content|path|json]
   stash index [--catalog <id>] [--json]
   stash doctor [--catalog <id>] [--json]
+  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--json]
+  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--json]
+  stash activate <name> --host <host> [--scope user] [--json]
+  stash deactivate <name> --host <host> [--scope user] [--json]
+  stash status [name] [--json]
 
 Configuration:
   --config <path>       Override STASH_CONFIG/platform config.
   --root <path>         Use one catalog without a config file.
   --root-id <id>        Catalog id used with --root (default: default).
   --cache-dir <path>    Override STASH_CACHE_DIR/platform cache.
+  --managed-root <path> Override STASH_MANAGED_HOME/platform managed store.
+
+Lifecycle targeting:
+  --host <host>         codex, claude-code, antigravity-ide, or antigravity-cli.
+  --scope <scope>       user (default); workspace is rejected in this release.
 
 Result pagination never caps the total relevant result set.
+Lifecycle commands manage only the Stash-owned store and explicitly selected
+standalone skills. They never mutate external catalogs, plugins, or host settings.
 `;
 }
 
@@ -315,6 +391,98 @@ async function main(): Promise<void> {
       }
       if (result.status === "failed") {
         process.exitCode = 4;
+      }
+      return;
+    }
+    case "install":
+    case "import":
+    case "add": {
+      const source = args.positionals.join(" ").trim();
+      if (!source) {
+        throw new StashError(
+          "invalid-argument",
+          `${args.command} requires a local skill directory.`,
+          2,
+        );
+      }
+      if (/^[a-z][a-z0-9+.-]*:\/\//iu.test(source)) {
+        throw new StashError(
+          "remote-install-unsupported",
+          "Remote installation is not supported in this release. Stage the skill locally, then install that directory.",
+          2,
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const sourceUrl = flag(args, "source-url");
+      const revision = flag(args, "revision");
+      const result = await lifecycle.install({
+        source,
+        ...(sourceUrl ? { sourceUrl } : {}),
+        ...(revision ? { revision } : {}),
+      });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "archive": {
+      const source = args.positionals.join(" ").trim();
+      if (!source) {
+        throw new StashError(
+          "invalid-argument",
+          "archive requires a standalone skill directory or a name with --host.",
+          2,
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const target = lifecycleTarget(args);
+      const sourceUrl = flag(args, "source-url");
+      const revision = flag(args, "revision");
+      const result = await lifecycle.archive({
+        source,
+        target,
+        ...(sourceUrl ? { sourceUrl } : {}),
+        ...(revision ? { revision } : {}),
+      });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "activate":
+    case "deactivate": {
+      const name = args.positionals.join(" ").trim();
+      if (!name) {
+        throw new StashError(
+          "invalid-argument",
+          `${args.command} requires a managed skill name.`,
+          2,
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const target = lifecycleTarget(args);
+      const result =
+        args.command === "activate"
+          ? await lifecycle.activate({ name, target })
+          : await lifecycle.deactivate({ name, target });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "status": {
+      const name = args.positionals.join(" ").trim();
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const result = await lifecycle.status(name ? { name } : {});
+      if (json) {
+        printJson(result);
+      } else if (result.status === "not-found") {
+        process.stdout.write(`No managed skills at ${result.managedRoot}.\n`);
+      } else {
+        for (const skill of result.skills) {
+          process.stdout.write(
+            `${skill.name}: store=${skill.store.state}/${skill.store.integrity}, deployments=${skill.deployments.length}\n`,
+          );
+          for (const deployment of skill.deployments) {
+            process.stdout.write(
+              `  - ${deployment.host}/${deployment.scope}: ${deployment.state} (${deployment.path})\n`,
+            );
+          }
+        }
       }
       return;
     }

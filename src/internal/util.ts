@@ -125,6 +125,13 @@ export function isPathInside(root: string, candidate: string): boolean {
   );
 }
 
+export function pathIdentity(value: string): string {
+  const normalized = path.resolve(value).normalize("NFKC");
+  return platform() === "win32"
+    ? normalized.toLocaleLowerCase("und")
+    : normalized;
+}
+
 export function normalizeRelativePath(value: string): string | undefined {
   if (!value || path.isAbsolute(value)) {
     return undefined;
@@ -183,6 +190,34 @@ export function platformCachePath(): string {
   return path.join(
     process.env.XDG_CACHE_HOME ?? path.join(homedir(), ".cache"),
     "stash",
+  );
+}
+
+export function platformManagedPath(): string {
+  if (process.env.STASH_MANAGED_HOME) {
+    return path.resolve(process.env.STASH_MANAGED_HOME);
+  }
+  const currentPlatform = platform();
+  if (currentPlatform === "win32") {
+    return path.join(
+      process.env.LOCALAPPDATA ?? path.join(homedir(), "AppData", "Local"),
+      "stash",
+      "managed",
+    );
+  }
+  if (currentPlatform === "darwin") {
+    return path.join(
+      homedir(),
+      "Library",
+      "Application Support",
+      "stash",
+      "managed",
+    );
+  }
+  return path.join(
+    process.env.XDG_DATA_HOME ?? path.join(homedir(), ".local", "share"),
+    "stash",
+    "managed",
   );
 }
 

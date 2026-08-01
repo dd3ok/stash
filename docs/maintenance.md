@@ -51,6 +51,26 @@ Before changing a support claim:
 Do not infer support from unknown frontmatter being ignored. Codex and Claude
 have documented manual-only controls; Antigravity currently does not.
 
+## Lifecycle lock repair
+
+Normal dead-owner recovery is automatic. A crash while holding the short-lived
+`.stash/lifecycle.reclaim` guard intentionally fails closed rather than guessing
+that no reclaimer is alive. Repair it only after all of these checks:
+
+1. stop Stash lifecycle commands and confirm no Stash process is running;
+2. inspect `.stash/lifecycle.lock/owner.json` and confirm its PID is absent;
+3. copy the entire `.stash` metadata directory to a backup outside the managed
+   root;
+4. move `lifecycle.reclaim` to a uniquely named quarantine outside `.stash`
+   instead of deleting it;
+5. run one non-destructive lifecycle mutation such as an idempotent `install`,
+   allowing the lock preflight to recover any archive journal;
+6. run `stash status --json` and retain the quarantine until state is verified.
+
+Never remove a live owner, treat PID age as proof, edit a journal, or overwrite
+an occupied archive source. A malformed main `lifecycle.lock` also requires
+manual inspection and remains fail-closed.
+
 ## Routing changes
 
 Every scoring change needs:
@@ -70,7 +90,22 @@ lexical failure set justifies their operational cost.
 
 Preserve these invariants:
 
-- catalogs are read-only;
+- catalog operations are read-only; explicit archive/deactivate authority is
+  limited to the exact standalone target or verified Stash-owned deployment;
+- managed storage never overlaps an external catalog by equality, nesting, or
+  filesystem alias;
+- lifecycle writes are limited to the managed root and explicit standalone
+  targets;
+- lifecycle never overwrites, follows links, or deletes untracked/drifted paths;
+- staged copies and destructive tombstones are hash-verified;
+- archives are journaled and recover deterministically without overwriting a
+  source path that became occupied;
+- stable skill/deployment IDs, ownership, targets, and hashes must agree before
+  withdrawal;
+- hash-matching catalog sources and Stash-owned deployments fold into the
+  managed search projection; drifted or unrelated copies remain visible;
+- lock ownership is atomically published, dead owners are reclaimed under a
+  separate guard, and malformed/live owners fail closed;
 - reads use refs and relative resources;
 - `realpath` containment is checked after symlink resolution;
 - content reads are bounded;

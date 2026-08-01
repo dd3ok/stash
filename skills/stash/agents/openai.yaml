@@ -1,7 +1,7 @@
 interface:
   display_name: "Stash"
-  short_description: "Search local Agent Skills by name, source, or task"
-  default_prompt: "Use $stash to list skills from a source, open an exact stored skill, or find every stored skill relevant to a task."
+  short_description: "Search and manage inactive local Agent Skills"
+  default_prompt: "Use $stash to find a stored skill or explicitly manage a standalone skill in the inactive local store."
 
 policy:
   allow_implicit_invocation: false

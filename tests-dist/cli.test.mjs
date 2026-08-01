@@ -62,6 +62,84 @@ source:
   assert.equal(result.matches[0].source.id, "mengto");
 });
 
+test("bundled skill CLI installs, resolves, deploys, and deactivates a managed skill", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-lifecycle-dist-test-"));
+  const source = path.join(temp, "source", "rare-skill");
+  const managedRoot = path.join(temp, "managed");
+  const sandboxHome = path.join(temp, "home");
+  const hostRoot = path.join(sandboxHome, ".agents", "skills");
+  const cliEnvironment = {
+    ...process.env,
+    HOME: sandboxHome,
+    USERPROFILE: sandboxHome,
+  };
+  await mkdir(source, { recursive: true });
+  await writeFile(
+    path.join(source, "SKILL.md"),
+    "---\nname: rare-skill\ndescription: A bundled lifecycle fixture.\n---\n\n# Rare\n",
+    "utf8",
+  );
+  const common = ["--managed-root", managedRoot, "--json"];
+  const installed = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "install",
+        source,
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(installed.status, "stored");
+
+  const resolved = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "exact",
+        "rare-skill",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(resolved.status, "ok");
+  assert.equal(resolved.matches[0].catalogId, "managed");
+
+  const deployed = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "activate",
+        "rare-skill",
+        "--host",
+        "codex",
+        "--scope",
+        "user",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(deployed.status, "deployed");
+  await access(path.join(hostRoot, "rare-skill", "SKILL.md"));
+
+  const deactivated = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "deactivate",
+        "rare-skill",
+        "--host",
+        "codex",
+        "--scope",
+        "user",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(deactivated.status, "deactivated");
+  await assert.rejects(access(path.join(hostRoot, "rare-skill")));
+});
+
 test("human output preserves URL-only source attribution", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-url-source-test-"));
   const catalog = path.join(temp, "catalog");
@@ -162,9 +240,11 @@ test("npm package entrypoints match the compiled layout", async () => {
   const cli = path.join(root, "dist", "cli.js");
   const library = await import(pathToFileURL(entrypoint).href);
   assert.equal(typeof library.createStashCatalog, "function");
+  assert.equal(typeof library.createStashLifecycle, "function");
 
   const { stdout } = await execFileAsync(process.execPath, [cli, "help"]);
   assert.match(stdout, /stash exact <name>/u);
+  assert.match(stdout, /stash install <local-skill-dir>/u);
   assert.match(stdout, /--source <id\|name\|url>/u);
 });
 

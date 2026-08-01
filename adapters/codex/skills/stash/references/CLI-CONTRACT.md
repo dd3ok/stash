@@ -41,6 +41,44 @@ Source IDs and display names are searchable evidence. Prefer `--source` when the
 
 Use `--expected-hash` when a workflow must guarantee that the skill selected during resolve is the skill read later.
 
+## Lifecycle contract
+
+Lifecycle commands use a Stash-owned managed root. They never write to an
+external catalog.
+
+- `install`/`import`/`add`: copy a local skill snapshot into the inactive
+  managed store and preserve the source.
+- `archive`: store and verify an explicitly selected standalone skill, then
+  remove that source from its discovery path.
+- `activate`: copy a managed skill to a host discovery root and record
+  `status: deployed`.
+- `deactivate`: remove only a recorded deployment whose tree hash still
+  matches.
+- `status`: report orthogonal store, integrity, deployment, ownership, and host
+  observation fields without claiming a host override is enabled.
+
+`deployed` means present at a documented or explicit discovery root. Check
+`reloadRequired` and `warning`. Plugin skills, untracked paths, drifted trees,
+symlinks/junctions, overwrites, workspace targets, and all Antigravity CLI
+flat-Markdown deployment are rejected. Every managed record has a stable
+`skillId`; each deployment has its own ID plus the same `skillId`, Stash
+ownership, target ID, and expected tree hash.
+
+When default resolution includes the managed catalog, `relatedCopies` lists
+hash-matching preserved sources and Stash-owned deployments that were folded
+into the managed canonical result. Catalog-scoped resolution still returns its
+own record, raw refs remain readable, and drifted copies remain separate with a
+warning.
+
+Lifecycle lock metadata is atomically published. A proven-dead owner may be
+reclaimed under a single-reclaimer guard; live or malformed ownership fails
+closed. If a crashed reclaimer leaves the guard behind, follow
+the repository maintenance procedure: stop lifecycle commands, verify both the
+recorded PID and all Stash processes are absent, back up `.stash`, move the
+guard to an external quarantine, trigger journal preflight with an idempotent
+mutation, and verify `status`. Never delete a live/malformed main lock or edit a
+journal.
+
 ## Exit codes
 
 - `0`: command completed, including a normal `no-match`.

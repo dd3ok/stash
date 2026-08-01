@@ -15,9 +15,10 @@ $stash find every skill for reviewing API documentation
 → return every materially relevant stored skill
 ```
 
-Stash searches locally, treats source libraries as read-only, and loads only
-the selected instructions. It does not download, install, update, or execute
-skills while searching.
+Stash searches locally, treats every external source library as read-only, and
+loads only the selected instructions. Its separate managed store can also keep
+an explicitly imported standalone skill inactive until you deploy it to a host.
+Search never downloads, installs, updates, or executes a skill.
 
 ## Why
 
@@ -47,7 +48,8 @@ host discovery
 ## How it works
 
 1. Keep everyday skills in the host's standard skill directory.
-2. Keep occasional skills in a separate folder configured in Stash.
+2. Import occasional skills into Stash's managed store, or configure an
+   existing read-only library.
 3. Invoke Stash explicitly.
 4. Stash resolves an exact name or runs local lexical search.
 5. It reads the selected `SKILL.md` and only the required resources.
@@ -94,6 +96,40 @@ defaults:
 Set `STASH_CONFIG` to the configuration file. You can also use
 `--root <library-path>` for a one-off call.
 
+### Managed inactive skills
+
+No catalog configuration is required for the managed store. Import accepts a
+local skill directory and leaves the source untouched:
+
+```bash
+stash install D:/downloads/rare-skill
+stash archive old-skill --host codex
+stash status rare-skill
+stash activate rare-skill --host codex
+stash deactivate rare-skill --host codex
+```
+
+`install`, `import`, and `add` are aliases. `archive` is the destructive form:
+it verifies and stores an explicitly selected standalone skill before removing
+that source directory from host discovery. It never manages a plugin-contained
+skill. If the selected path is already a verified Stash-owned deployment,
+`archive` performs the same tracked withdrawal as `deactivate` and preserves
+the canonical copy. `activate` records a `deployed` copy; it does not claim that
+a host-level enable/disable override is enabled.
+
+The CLI imports local directories only. When a user explicitly asks the Stash
+skill to import a repository skill, the agent may stage the pinned revision
+outside host discovery, inspect it, and pass that local directory to `install`.
+Install may read a selected skill inside a configured catalog but never mutates
+that source. When a hash-matching source or Stash-owned deployment also appears
+in an indexed catalog, search folds it into the managed canonical result as a
+related copy. A drifted or unrelated copy remains separate and visible.
+
+The first lifecycle release is intentionally local-only: no remote Git source,
+symlink deployment, overwrite, plugin mutation, vendor setting mutation, or
+workspace lifecycle target. Antigravity CLI lifecycle is rejected because its
+documented standalone skill layouts are flat Markdown rather than directories.
+
 ## Vendor support
 
 | Vendor | Explicit use | Automatic selection |
@@ -108,12 +144,14 @@ Antigravity adapters are generated, but should be tested against the target
 
 ## Boundaries
 
-- Source libraries remain read-only.
+- Catalog operations keep external source libraries read-only. Writes are
+  restricted to the non-overlapping Stash-managed root and exact standalone
+  lifecycle targets explicitly selected by the caller.
 - Search uses no network, embedding model, vector database, or second LLM
   router.
 - Reading a skill does not execute its scripts.
-- Stash is not an installer, updater, marketplace, permission system, sandbox,
-  or security scanner.
+- Stash is not a marketplace, remote updater, permission system, sandbox, or
+  security scanner. Plugin lifecycle remains owned by each host.
 
 ## Documentation
 

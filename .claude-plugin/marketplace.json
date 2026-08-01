@@ -8,8 +8,8 @@
     {
       "name": "stash",
       "source": "./adapters/claude-code",
-      "description": "Search and load local Agent Skills from a separate SKILL.md library on explicit request.",
-      "version": "0.1.1",
+      "description": "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
+      "version": "0.2.0",
       "license": "MIT",
       "strict": true
     }
