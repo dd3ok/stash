@@ -72,15 +72,21 @@ ownership, target ID, and expected tree hash.
 the matching `--expected-revision`. Remote provenance consists of a canonical
 repository `--source-url`, a caller-resolved full 40- or 64-hex commit object ID
 as `--revision`, and an exact
-case-sensitive `--repository-path` (`.` means repository root). A content,
-revision, or path change against recorded remote provenance requires the
-recorded source URL. Changed remote content must use a new revision. A
+case-sensitive `--repository-path` (`.` means repository root), plus an exact
+`--tracking-ref` of `HEAD`, `refs/heads/...`, or `refs/tags/...`. A content,
+revision, path, or tracking-ref change against recorded remote provenance
+requires the recorded source URL. Changed remote content must use a new
+revision. A
 mismatched tree or revision is a compare-and-swap conflict; a different URL or
-recorded repository path is a provenance conflict. Legacy records without a
-repository path remain usable for explicit single-skill operations but must be
-skipped by all-managed automation rather than guessed.
+recorded repository path or tracking ref is a provenance conflict. Legacy
+records without a repository path or tracking ref remain usable for explicit
+single-skill operations but must be skipped by all-managed automation rather
+than guessed.
 Introducing a remote URL on a record that had none requires URL, full commit
-object ID, and repository path together.
+object ID, repository path, and tracking ref together.
+New `install` and standalone `archive` records likewise accept remote
+provenance only as that complete four-field set; partial provenance is rejected
+rather than creating a record that bulk automation cannot update safely.
 Update never mutates deployments. `outdatedDeployments` counts tracked copies
 whose tree differs from the new managed tree, and `status` reports their
 orthogonal presence/integrity plus `current: false`.

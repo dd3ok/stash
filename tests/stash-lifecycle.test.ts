@@ -98,6 +98,7 @@ test("install creates a searchable inactive canonical copy without changing sour
     sourceUrl,
     revision: "a".repeat(40),
     repositoryPath: "skills/rare-skill",
+    trackingRef: "refs/heads/main",
   });
   assert.equal(installed.status, "stored");
   assert.match(installed.skillId, /^[0-9a-f-]{36}$/u);
@@ -128,6 +129,7 @@ test("install creates a searchable inactive canonical copy without changing sour
     installedStatus.skills[0]?.source.repositoryPath,
     "skills/rare-skill",
   );
+  assert.equal(installedStatus.skills[0]?.source.trackingRef, "refs/heads/main");
 
   const repeated = await lifecycle.install({ source: fixture.sourceRoot });
   assert.equal(repeated.status, "already-stored");
@@ -136,6 +138,8 @@ test("install creates a searchable inactive canonical copy without changing sour
 test("update transactionally replaces a managed tree while preserving its identity", async () => {
   const fixture = await lifecycleFixture();
   const sourceUrl = "https://github.com/example/rare-skills";
+  const oldRevision = "a".repeat(40);
+  const newRevision = "b".repeat(40);
   const lifecycle = await createStashLifecycle({
     catalogs: [],
     managedRoot: fixture.managedRoot,
@@ -144,7 +148,9 @@ test("update transactionally replaces a managed tree while preserving its identi
   const installed = await lifecycle.install({
     source: fixture.sourceRoot,
     sourceUrl,
-    revision: "rev-1",
+    revision: oldRevision,
+    repositoryPath: "skills/rare-skill",
+    trackingRef: "refs/heads/main",
   });
   const before = await lifecycle.status({ name: "rare-skill" });
   const replacement = await createStandaloneSkill(
@@ -160,17 +166,17 @@ test("update transactionally replaces a managed tree while preserving its identi
   const updated = await lifecycle.update({
     source: replacement,
     expectedTreeHash: installed.treeHash,
-    expectedRevision: "rev-1",
+    expectedRevision: oldRevision,
     sourceUrl,
-    revision: "rev-2",
+    revision: newRevision,
   });
 
   assert.equal(updated.status, "updated");
   assert.equal(updated.skillId, installed.skillId);
   assert.equal(updated.previousTreeHash, installed.treeHash);
   assert.notEqual(updated.treeHash, installed.treeHash);
-  assert.equal(updated.previousRevision, "rev-1");
-  assert.equal(updated.revision, "rev-2");
+  assert.equal(updated.previousRevision, oldRevision);
+  assert.equal(updated.revision, newRevision);
   assert.equal(updated.outdatedDeployments, 0);
   assert.equal(
     await readFile(
@@ -181,7 +187,7 @@ test("update transactionally replaces a managed tree while preserving its identi
   );
   const after = await lifecycle.status({ name: "rare-skill" });
   assert.equal(after.skills[0]?.store.integrity, "verified");
-  assert.equal(after.skills[0]?.source.revision, "rev-2");
+  assert.equal(after.skills[0]?.source.revision, newRevision);
   assert.equal(
     after.skills[0]?.source.importedAt,
     before.skills[0]?.source.importedAt,
@@ -196,6 +202,8 @@ test("update transactionally replaces a managed tree while preserving its identi
 test("update enforces provenance CAS and avoids copying an unchanged tree", async () => {
   const fixture = await lifecycleFixture();
   const sourceUrl = "https://github.com/example/rare-skills";
+  const oldRevision = "a".repeat(40);
+  const newRevision = "b".repeat(40);
   const lifecycle = await createStashLifecycle({
     catalogs: [],
     managedRoot: fixture.managedRoot,
@@ -204,14 +212,16 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
   const installed = await lifecycle.install({
     source: fixture.sourceRoot,
     sourceUrl,
-    revision: "rev-1",
+    revision: oldRevision,
+    repositoryPath: "skills/rare-skill",
+    trackingRef: "refs/heads/main",
   });
   await assert.rejects(
     lifecycle.update({
       source: fixture.sourceRoot,
       expectedTreeHash: `sha256:${"0".repeat(64)}`,
-      expectedRevision: "rev-1",
-      revision: "rev-2",
+      expectedRevision: oldRevision,
+      revision: newRevision,
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "managed-version-conflict",
@@ -220,9 +230,9 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
     lifecycle.update({
       source: fixture.sourceRoot,
       expectedTreeHash: installed.treeHash,
-      expectedRevision: "rev-1",
+      expectedRevision: oldRevision,
       sourceUrl: "https://github.com/example/different-skills",
-      revision: "rev-2",
+      revision: newRevision,
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "source-mismatch",
@@ -240,8 +250,8 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
     lifecycle.update({
       source: replacement,
       expectedTreeHash: installed.treeHash,
-      expectedRevision: "rev-1",
-      revision: "rev-2",
+      expectedRevision: oldRevision,
+      revision: newRevision,
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "invalid-argument",
@@ -250,9 +260,9 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
     lifecycle.update({
       source: replacement,
       expectedTreeHash: installed.treeHash,
-      expectedRevision: "rev-1",
+      expectedRevision: oldRevision,
       sourceUrl,
-      revision: "rev-1",
+      revision: oldRevision,
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "invalid-argument",
@@ -261,17 +271,17 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
   const metadataUpdated = await lifecycle.update({
     source: fixture.sourceRoot,
     expectedTreeHash: installed.treeHash,
-    expectedRevision: "rev-1",
+    expectedRevision: oldRevision,
     sourceUrl,
-    revision: "rev-2",
+    revision: newRevision,
   });
   assert.equal(metadataUpdated.status, "metadata-updated");
   assert.equal(metadataUpdated.treeHash, installed.treeHash);
   const alreadyCurrent = await lifecycle.update({
     source: fixture.sourceRoot,
     expectedTreeHash: installed.treeHash,
-    expectedRevision: "rev-2",
-    revision: "rev-2",
+    expectedRevision: newRevision,
+    revision: newRevision,
   });
   assert.equal(alreadyCurrent.status, "already-current");
 });
@@ -285,11 +295,21 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     managedRoot: fixture.managedRoot,
     lifecycleHome: path.join(fixture.base, "home"),
   });
-  const installed = await lifecycle.install({
-    source: fixture.sourceRoot,
-    sourceUrl,
-    revision: immutableRevision,
-  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const recordPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "records",
+    "rare-skill.json",
+  );
+  const legacyRecord = JSON.parse(await readFile(recordPath, "utf8"));
+  legacyRecord.source.url = sourceUrl;
+  legacyRecord.source.revision = immutableRevision;
+  await writeFile(
+    recordPath,
+    `${JSON.stringify(legacyRecord, null, 2)}\n`,
+    "utf8",
+  );
   const enriched = await lifecycle.update({
     source: fixture.sourceRoot,
     expectedTreeHash: installed.treeHash,
@@ -297,6 +317,7 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     sourceUrl: "https://github.com/Example/rare-skills",
     revision: immutableRevision,
     repositoryPath: "skills/rare-skill",
+    trackingRef: "refs/tags/v1.0.0",
   });
   assert.equal(enriched.status, "metadata-updated");
   const status = await lifecycle.status({ name: "rare-skill" });
@@ -308,6 +329,7 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     status.skills[0]?.source.repositoryPath,
     "skills/rare-skill",
   );
+  assert.equal(status.skills[0]?.source.trackingRef, "refs/tags/v1.0.0");
 
   await assert.rejects(
     lifecycle.update({
@@ -329,6 +351,19 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
       sourceUrl: "https://github.com/Example/rare-skills",
       revision: immutableRevision,
       repositoryPath: "Skills/rare-skill",
+    }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "source-mismatch",
+  );
+  await assert.rejects(
+    lifecycle.update({
+      source: fixture.sourceRoot,
+      expectedTreeHash: installed.treeHash,
+      expectedRevision: immutableRevision,
+      sourceUrl: "https://github.com/Example/rare-skills",
+      revision: immutableRevision,
+      repositoryPath: "skills/rare-skill",
+      trackingRef: "refs/heads/main",
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "source-mismatch",
@@ -403,6 +438,44 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     (error: unknown) =>
       error instanceof StashError && error.code === "invalid-argument",
   );
+  for (const partial of [
+    { sourceUrl: "https://example.com/repository" },
+    {
+      sourceUrl: "https://example.com/repository",
+      revision: immutableRevision,
+    },
+    {
+      sourceUrl: "https://example.com/repository",
+      revision: immutableRevision,
+      repositoryPath: ".",
+    },
+    { revision: immutableRevision },
+  ]) {
+    await assert.rejects(
+      lifecycle.install({ source: fixture.sourceRoot, ...partial }),
+      (error: unknown) =>
+        error instanceof StashError && error.code === "invalid-argument",
+    );
+  }
+  for (const trackingRef of [
+    "main",
+    "refs/remotes/origin/main",
+    "refs/heads/../main",
+    "refs/heads/feature lock",
+    "refs/heads/main ",
+  ]) {
+    await assert.rejects(
+      lifecycle.install({
+        source: fixture.sourceRoot,
+        sourceUrl: "https://example.com/repository",
+        revision: immutableRevision,
+        repositoryPath: ".",
+        trackingRef,
+      }),
+      (error: unknown) =>
+        error instanceof StashError && error.code === "invalid-argument",
+    );
+  }
 
   const localSource = await createStandaloneSkill(
     path.join(fixture.base, "local-source"),
@@ -414,6 +487,11 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     {
       sourceUrl: "https://example.com/repository",
       revision: immutableRevision,
+    },
+    {
+      sourceUrl: "https://example.com/repository",
+      revision: immutableRevision,
+      repositoryPath: "skills/local-skill",
     },
   ]) {
     await assert.rejects(
@@ -432,8 +510,23 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
     sourceUrl: "https://example.com/repository",
     revision: immutableRevision,
     repositoryPath: "skills/local-skill",
+    trackingRef: "HEAD",
   });
   assert.equal(introduced.status, "metadata-updated");
+
+  const unicodeSource = await createStandaloneSkill(
+    path.join(fixture.base, "unicode-ref-source"),
+    "unicode-ref-skill",
+  );
+  await lifecycle.install({
+    source: unicodeSource,
+    sourceUrl: "https://example.com/unicode-repository",
+    revision: "c".repeat(40),
+    repositoryPath: "skills/unicode-ref-skill",
+    trackingRef: "refs/heads/K",
+  });
+  const unicodeStatus = await lifecycle.status({ name: "unicode-ref-skill" });
+  assert.equal(unicodeStatus.skills[0]?.source.trackingRef, "refs/heads/K");
 });
 
 test("update preserves tracked deployments and reports them as outdated", async () => {
@@ -470,7 +563,10 @@ test("update preserves tracked deployments and reports them as outdated", async 
   assert.equal(stale.skills[0]?.deployments[0]?.integrity, "verified");
   assert.equal(stale.skills[0]?.deployments[0]?.current, false);
 
-  await lifecycle.deactivate({ name: "rare-skill", target });
+  const archived = await lifecycle.archive({ source: "rare-skill", target });
+  assert.equal(archived.status, "deactivated");
+  const deactivated = await lifecycle.status({ name: "rare-skill" });
+  assert.equal(deactivated.skills[0]?.deployments.length, 0);
   await lifecycle.activate({ name: "rare-skill", target });
   const refreshed = await lifecycle.status({ name: "rare-skill" });
   assert.equal(refreshed.skills[0]?.deployments[0]?.current, true);
@@ -582,6 +678,36 @@ test("archive verifies a standalone skill before removing it from host discovery
   assert.equal(archived.status, "stored");
   await assert.rejects(access(active));
   await access(path.join(fixture.managedRoot, "archive-me", "SKILL.md"));
+  assert.deepEqual(
+    await readdir(path.join(fixture.managedRoot, ".stash", "journal")),
+    [],
+  );
+});
+
+test("archive rejects partial remote provenance without removing the source", async () => {
+  const fixture = await lifecycleFixture();
+  const hostRoot = path.join(fixture.base, "home", ".agents", "skills");
+  const active = await createStandaloneSkill(hostRoot, "archive-partial");
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+
+  await assert.rejects(
+    lifecycle.archive({
+      source: "archive-partial",
+      target: { host: "codex", scope: "user" },
+      sourceUrl: "https://example.com/repository",
+    }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "invalid-argument",
+  );
+
+  await access(path.join(active, "SKILL.md"));
+  await assert.rejects(
+    access(path.join(fixture.managedRoot, "archive-partial")),
+  );
   assert.deepEqual(
     await readdir(path.join(fixture.managedRoot, ".stash", "journal")),
     [],

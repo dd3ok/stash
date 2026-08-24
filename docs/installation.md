@@ -24,7 +24,8 @@ stash update /path/to/staged-update \
   --expected-revision <current-revision> \
   --source-url https://github.com/example/skills \
   --revision <new-commit-oid> \
-  --repository-path skills/rare-skill
+  --repository-path skills/rare-skill \
+  --tracking-ref refs/heads/main
 ```
 
 Remote URLs are not accepted by the CLI. Stage a requested repository revision
@@ -32,6 +33,9 @@ outside every host discovery path, review it, and import the local skill root.
 Record the canonical repository URL, caller-resolved full 40- or 64-hex Git
 commit object ID, and
 exact repository-relative skill path; use `.` for a skill at repository root.
+Also record `HEAD` or the fully qualified `refs/heads/...` or `refs/tags/...`
+lineage. Bulk updates resolve only that exact ref and skip legacy records that
+do not have it instead of guessing the remote default branch.
 Updating follows the same staging rule and requires compare-and-swap values from
 `stash status --json`. It changes only the managed canonical copy; tracked host
 deployments remain untouched and report whether they still match that copy.

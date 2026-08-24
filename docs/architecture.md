@@ -172,7 +172,7 @@ Update uses caller-observed state as a compare-and-swap boundary:
 
 ```text
 explicit local skill + expected tree/revision → verify current managed state
-  → verify canonical URL + immutable revision + exact repository path
+  → verify canonical URL + immutable revision + exact repository path/ref
   → journal-owned staging → snapshot + re-hash staging
   → commit-time record/tree compare-and-swap
   → same tree: metadata-only record advance

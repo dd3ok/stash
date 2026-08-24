@@ -99,6 +99,8 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "1".repeat(40),
         "--repository-path",
         "skills/rare-skill",
+        "--tracking-ref",
+        "refs/heads/main",
         ...common,
       ], { env: cliEnvironment })
     ).stdout,
@@ -121,6 +123,8 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         "2".repeat(40),
         "--repository-path",
         "skills/rare-skill",
+        "--tracking-ref",
+        "refs/heads/main",
         ...common,
       ], { env: cliEnvironment })
     ).stdout,
@@ -141,6 +145,7 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
     lifecycleStatus.skills[0].source.repositoryPath,
     "skills/rare-skill",
   );
+  assert.equal(lifecycleStatus.skills[0].source.trackingRef, "refs/heads/main");
 
   const resolved = JSON.parse(
     (

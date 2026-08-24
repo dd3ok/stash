@@ -10,7 +10,8 @@
   explicit outdated-deployment reporting without automatic deployment mutation.
 - Harden update recovery with pre-copy journals, commit-time compare-and-swap,
   idempotent authorized cleanup, drift-preserving rollback, contained real
-  metadata directories, and exact repository-path provenance for safe bulk use.
+  metadata directories, exact repository-path/tracking-ref provenance for safe
+  bulk use, and no implicit fallback to a repository's default ref.
 - Add stable skill/deployment identities, explicit ownership and target records,
   orthogonal status fields, archive journals, guarded dead-owner lock recovery,
   and fail-closed malformed lock handling.

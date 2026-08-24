@@ -105,7 +105,8 @@ For a local skill directory, run:
 node <stash-cli> install <local-skill-directory> \
   [--source-url <canonical-repository-url>] \
   [--revision <resolved-immutable-revision>] \
-  [--repository-path <repository-relative-skill-root>] --json
+  [--repository-path <repository-relative-skill-root>] \
+  [--tracking-ref <HEAD-or-fully-qualified-git-ref>] --json
 ```
 
 The source must contain `SKILL.md` directly. The command copies a verified
@@ -115,11 +116,15 @@ When the user explicitly provides a remote repository source, stage the
 requested revision in a newly created temporary directory outside every host
 skill discovery path, inspect the selected skill root, then run the local
 install command with its canonical source URL, resolved immutable revision, and
-exact repository-relative skill root (`.` for a root skill). Resolve a branch or
-tag to the full 40- or 64-hex commit object ID before recording it; never record
-a mutable ref as the revision. Do not execute repository content. Do not install it into a host
-skill folder first. Remove only the temporary staging directory after a
-successful managed import.
+exact repository-relative skill root (`.` for a root skill), plus the exact
+update lineage as `HEAD`, `refs/heads/...`, or `refs/tags/...`. Resolve that ref
+to the full 40- or 64-hex commit object ID before recording it; never record a
+mutable ref as the revision. These four provenance fields are all-or-none; the
+CLI rejects a partial remote identity. If the user supplied only a raw commit
+object ID and no safe tracking ref exists, import it without remote provenance
+and report that all-managed update cannot infer a lineage. Do not execute
+repository content. Do not install it into a host skill folder first. Remove
+only the temporary staging directory after a successful managed import.
 
 ### Update a managed copy
 
@@ -137,20 +142,23 @@ node <stash-cli> update <local-skill-directory> \
   [--expected-revision <current-source-revision>] \
   [--source-url <canonical-repository-url>] \
   [--revision <new-resolved-immutable-revision>] \
-  [--repository-path <repository-relative-skill-root>] --json
+  [--repository-path <repository-relative-skill-root>] \
+  [--tracking-ref <HEAD-or-fully-qualified-git-ref>] --json
 ```
 
 The source must contain `SKILL.md` directly and its name must already exist in
 Stash. Pass `--expected-revision` whenever status reports a current revision.
 For a content or revision change with remote provenance, pass the recorded
 source URL and the resolved new full commit object ID. Changed remote content
-must use a revision different from the recorded revision. The source URL and
-repository path are exact provenance identities; URL syntax is canonicalized,
-but repository path spelling and case are preserved and compared exactly.
+must use a revision different from the recorded revision. The source URL,
+repository path, and tracking ref are exact provenance identities; URL syntax
+is canonicalized, but path and ref spelling and case are preserved and compared
+exactly.
 Introducing a remote URL on a record that had none is allowed only through an
-explicit single-skill update that supplies the URL, full commit object ID, and
-path together. Existing legacy remote records without a path remain
-single-skill-only until explicitly enriched; bulk automation must skip them.
+explicit single-skill update that supplies the URL, full commit object ID,
+path, and tracking ref together. Existing legacy remote records without a path
+or tracking ref remain single-skill-only until explicitly enriched; bulk
+automation must skip them.
 
 Interpret the result as follows:
 
@@ -165,14 +173,17 @@ such a deployment only through an explicit `deactivate` followed by `activate`.
 
 For an all-managed update request, get unfiltered `status` and select only
 records that contain `source.url`, `source.revision`, and
-`source.repositoryPath`. Group them by canonical repository URL, resolve the
-remote default ref to an immutable revision, and stage each repository once.
+`source.repositoryPath`, plus `source.trackingRef`. Group them by canonical
+repository URL and exact tracking ref, resolve only that recorded ref to an
+immutable revision, and stage each repository/ref pair once. Never substitute
+the remote default ref for a missing or different recorded ref.
 For every record, address only the exact recorded repository-relative path,
 verify realpath containment inside the staged repository, require `SKILL.md`
 directly at that path, and require its frontmatter name to equal the managed
 name. Never scan the repository for a same-named skill or choose among multiple
 matches. Run `update` for changed trees and also for unchanged trees whose
-immutable repository revision advanced. Report records missing any provenance
+immutable repository revision advanced, passing the same recorded tracking ref
+back to the command. Report records missing any provenance
 field as `legacy-unresolved` and skip them; never guess or bulk-enrich their
 upstream. Each skill update commits independently, so report all successes,
 skips, and failures rather than claiming batch atomicity.

@@ -234,9 +234,9 @@ Usage:
   stash read <ref> [--resource <path>] [--format content|path|json]
   stash index [--catalog <id>] [--json]
   stash doctor [--catalog <id>] [--json]
-  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--json]
-  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <revision>] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--json]
-  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--json]
+  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <revision>] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
   stash status [name] [--json]
@@ -431,11 +431,13 @@ async function main(): Promise<void> {
       const sourceUrl = flag(args, "source-url");
       const revision = flag(args, "revision");
       const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.install({
         source,
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(revision ? { revision } : {}),
         ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
       });
       json ? printJson(result) : printLifecycle(result);
       return;
@@ -469,6 +471,7 @@ async function main(): Promise<void> {
       const revision = flag(args, "revision");
       const expectedRevision = flag(args, "expected-revision");
       const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.update({
         source,
         expectedTreeHash,
@@ -476,6 +479,7 @@ async function main(): Promise<void> {
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(revision ? { revision } : {}),
         ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
       });
       json ? printJson(result) : printLifecycle(result);
       return;
@@ -494,12 +498,14 @@ async function main(): Promise<void> {
       const sourceUrl = flag(args, "source-url");
       const revision = flag(args, "revision");
       const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.archive({
         source,
         target,
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(revision ? { revision } : {}),
         ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
       });
       json ? printJson(result) : printLifecycle(result);
       return;

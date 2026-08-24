@@ -106,7 +106,8 @@ stash update D:/staging/rare-skill-v2 \
   --expected-revision <current-revision> \
   --source-url https://github.com/example/skills \
   --revision <new-commit-oid> \
-  --repository-path skills/rare-skill
+  --repository-path skills/rare-skill \
+  --tracking-ref refs/heads/main
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -128,9 +129,10 @@ CLI는 로컬 디렉터리만 가져옵니다. 사용자가 Stash 스킬에 저�
 호출자가 확인한 현재 트리 해시와 기록된 경우 현재 revision을 요구하고 원본
 내용이나 revision을 바꿀 때 기록된 원본 URL도 요구합니다. 에이전트는 변경될
 수 있는 branch/tag나 이름 추측 대신, 해석이 끝난 40자 또는 64자 16진수
-commit object ID와 정확한
-저장소 상대 스킬 경로(저장소 루트는 `.`)를 기록합니다. 원본 URL이나 기록된
-경로가 달라지면 거부합니다. 트리가 같고 revision만 바뀐 경우에는 파일을 다시
+commit object ID, 정확한 저장소 상대 스킬 경로(저장소 루트는 `.`), 그리고
+명시적인 `HEAD` 또는 fully qualified branch/tag tracking ref를 기록합니다.
+일괄 업데이트는 기본 ref를 추측하거나 바꾸지 않습니다. 원본 URL, 기록된 경로,
+tracking ref가 달라지면 거부합니다. 트리가 같고 revision만 바뀐 경우에는 파일을 다시
 복사하지 않고 메타데이터만 갱신합니다. 내용이 달라지면 staging 사본을
 재검증하고 교체 직전 현재 레코드와 트리를 다시 비교한 뒤, 복구 journal이
 보장하는 transaction으로 교체합니다. 프로세스 중단 복구는 반복 실행해도

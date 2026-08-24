@@ -108,7 +108,8 @@ stash update D:/staging/rare-skill-v2 \
   --expected-revision <current-revision> \
   --source-url https://github.com/example/skills \
   --revision <new-commit-oid> \
-  --repository-path skills/rare-skill
+  --repository-path skills/rare-skill \
+  --tracking-ref refs/heads/main
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -129,9 +130,10 @@ outside host discovery, inspect it, and pass that local directory to `install`.
 The same rule applies to `update`: it replaces only an existing managed copy,
 requires the caller's current tree hash (and current revision when recorded),
 and requires the matching source URL for remote-provenance changes. Agents
-record the full 40- or 64-hex commit object ID and exact repository-relative skill path
-(`.` for a repository-root skill), not a mutable branch/tag or a name-based
-guess. A same-tree revision advance updates metadata without copying content.
+record the full 40- or 64-hex commit object ID, exact repository-relative skill
+path (`.` for a repository-root skill), and explicit `HEAD` or fully qualified
+branch/tag tracking ref. Bulk updates never guess or substitute a default ref.
+A same-tree revision advance updates metadata without copying content.
 Changed content is staged, re-hashed, checked again against the current record
 and tree, and transactionally swapped under a recovery journal. Existing
 deployments remain untouched and are reported as outdated until explicitly

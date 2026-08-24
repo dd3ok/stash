@@ -190,6 +190,40 @@ function canonicalImmutableRevision(value: string): string | undefined {
     : undefined;
 }
 
+function canonicalTrackingRef(value: string): string | undefined {
+  const candidate = value;
+  if (candidate === "HEAD") {
+    return candidate;
+  }
+  if (
+    candidate.length > 1024 ||
+    !/^refs\/(?:heads|tags)\/.+$/u.test(candidate) ||
+    [...candidate].some(
+      (character) =>
+        character.charCodeAt(0) <= 0x20 ||
+        character.charCodeAt(0) === 0x7f ||
+        "~^:?*[\\".includes(character),
+    ) ||
+    candidate.includes("..") ||
+    candidate.includes("@{") ||
+    candidate.endsWith(".")
+  ) {
+    return undefined;
+  }
+  const segments = candidate.split("/");
+  if (
+    segments.some(
+      (segment) =>
+        segment.length === 0 ||
+        segment.startsWith(".") ||
+        segment.endsWith(".lock"),
+    )
+  ) {
+    return undefined;
+  }
+  return candidate;
+}
+
 function compatibilityState(value: unknown): VendorCompatibility["codex"] {
   return value === "supported" ||
     value === "partial" ||
@@ -1390,6 +1424,10 @@ class StashLifecycleImplementation implements StashLifecycle {
           typeof parsed.source.revision !== "string") ||
         (parsed.source.repositoryPath !== undefined &&
           typeof parsed.source.repositoryPath !== "string") ||
+        (parsed.source.trackingRef !== undefined &&
+          (typeof parsed.source.trackingRef !== "string" ||
+            canonicalTrackingRef(parsed.source.trackingRef) !==
+              parsed.source.trackingRef)) ||
         !Array.isArray(parsed.deployments) ||
         parsed.deployments.some(
           (deployment) =>
@@ -1463,10 +1501,17 @@ class StashLifecycleImplementation implements StashLifecycle {
     sourceUrl?: string,
     revision?: string,
     repositoryPath?: string,
-  ): { sourceUrl?: string; revision?: string; repositoryPath?: string } {
+    trackingRef?: string,
+  ): {
+    sourceUrl?: string;
+    revision?: string;
+    repositoryPath?: string;
+    trackingRef?: string;
+  } {
     const requestedUrl = sourceUrl?.trim() || undefined;
     const requestedRevision = revision?.trim() || undefined;
     const requestedPath = repositoryPath || undefined;
+    const requestedTrackingRef = trackingRef || undefined;
     const canonicalUrl = requestedUrl
       ? canonicalLifecycleSourceUrl(requestedUrl)
       : undefined;
@@ -1505,10 +1550,21 @@ class StashLifecycleImplementation implements StashLifecycle {
         2,
       );
     }
+    const canonicalRef = requestedTrackingRef
+      ? canonicalTrackingRef(requestedTrackingRef)
+      : undefined;
+    if (requestedTrackingRef && !canonicalRef) {
+      throw new StashError(
+        "invalid-argument",
+        "--tracking-ref must be HEAD or a fully qualified refs/heads/... or refs/tags/... Git ref.",
+        2,
+      );
+    }
     return {
       ...(canonicalUrl ? { sourceUrl: canonicalUrl } : {}),
       ...(canonicalRevision ? { revision: canonicalRevision } : {}),
       ...(canonicalPath ? { repositoryPath: canonicalPath } : {}),
+      ...(canonicalRef ? { trackingRef: canonicalRef } : {}),
     };
   }
 
@@ -1541,6 +1597,7 @@ class StashLifecycleImplementation implements StashLifecycle {
     sourceUrl?: string,
     revision?: string,
     repositoryPath?: string,
+    trackingRef?: string,
     expectedTreeHash?: string,
   ): Promise<StoredSource> {
     await this.#assertSourceBoundary(source);
@@ -1557,7 +1614,24 @@ class StashLifecycleImplementation implements StashLifecycle {
       sourceUrl,
       revision,
       repositoryPath,
+      trackingRef,
     );
+    if (
+      (provenance.sourceUrl ||
+        provenance.revision ||
+        provenance.repositoryPath ||
+        provenance.trackingRef) &&
+      (!provenance.sourceUrl ||
+        !provenance.revision ||
+        !provenance.repositoryPath ||
+        !provenance.trackingRef)
+    ) {
+      throw new StashError(
+        "invalid-argument",
+        "install and archive require --source-url, a full immutable --revision, --repository-path, and --tracking-ref together when recording remote provenance.",
+        2,
+      );
+    }
     const managedPath = path.join(this.#managedRoot, metadata.name);
     const existingType = await pathType(managedPath);
     if (existingType !== "missing") {
@@ -1622,6 +1696,9 @@ class StashLifecycleImplementation implements StashLifecycle {
           ...(provenance.repositoryPath
             ? { repositoryPath: provenance.repositoryPath }
             : {}),
+          ...(provenance.trackingRef
+            ? { trackingRef: provenance.trackingRef }
+            : {}),
         },
         compatibility: metadata.compatibility,
         deployments: [],
@@ -1655,6 +1732,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         request.sourceUrl,
         request.revision,
         request.repositoryPath,
+        request.trackingRef,
       );
       return {
         status: stored.created ? "stored" : "already-stored",
@@ -1740,6 +1818,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         request.sourceUrl,
         request.revision,
         request.repositoryPath,
+        request.trackingRef,
       );
       const currentSourceUrl = record.source.url;
       const canonicalCurrentSourceUrl = currentSourceUrl
@@ -1763,6 +1842,17 @@ class StashLifecycleImplementation implements StashLifecycle {
           5,
         );
       }
+      const currentTrackingRef = record.source.trackingRef;
+      const canonicalCurrentTrackingRef = currentTrackingRef
+        ? canonicalTrackingRef(currentTrackingRef)
+        : undefined;
+      if (currentTrackingRef && !canonicalCurrentTrackingRef) {
+        throw new StashError(
+          "invalid-lifecycle-record",
+          `Managed tracking ref is invalid for "${metadata.name}".`,
+          5,
+        );
+      }
       if (
         canonicalCurrentRepositoryPath &&
         (!canonicalCurrentSourceUrl ||
@@ -1775,17 +1865,51 @@ class StashLifecycleImplementation implements StashLifecycle {
           5,
         );
       }
+      if (
+        canonicalCurrentTrackingRef &&
+        (!canonicalCurrentSourceUrl ||
+          !currentRevision ||
+          !canonicalImmutableRevision(currentRevision) ||
+          !canonicalCurrentRepositoryPath)
+      ) {
+        throw new StashError(
+          "invalid-lifecycle-record",
+          `Managed tracking provenance is incomplete for "${metadata.name}".`,
+          5,
+        );
+      }
       const requestedSourceUrl = requestedProvenance.sourceUrl;
       const requestedRevision = requestedProvenance.revision;
       const requestedRepositoryPath = requestedProvenance.repositoryPath;
+      const requestedTrackingRef = requestedProvenance.trackingRef;
       if (
         !canonicalCurrentSourceUrl &&
-        requestedSourceUrl &&
-        (!requestedRevision || !requestedRepositoryPath)
+        (requestedSourceUrl ||
+          requestedRevision ||
+          requestedRepositoryPath ||
+          requestedTrackingRef) &&
+        (!requestedSourceUrl ||
+          !requestedRevision ||
+          !requestedRepositoryPath ||
+          !requestedTrackingRef)
       ) {
         throw new StashError(
           "invalid-argument",
-          "Introducing remote provenance requires --source-url, a full immutable --revision, and --repository-path together.",
+          "Introducing remote provenance requires --source-url, a full immutable --revision, --repository-path, and --tracking-ref together.",
+          2,
+        );
+      }
+      if (
+        canonicalCurrentSourceUrl &&
+        !canonicalCurrentTrackingRef &&
+        requestedTrackingRef &&
+        (!requestedSourceUrl ||
+          !requestedRevision ||
+          !requestedRepositoryPath)
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "Enriching legacy tracking provenance requires --source-url, --revision, --repository-path, and --tracking-ref together.",
           2,
         );
       }
@@ -1811,12 +1935,25 @@ class StashLifecycleImplementation implements StashLifecycle {
           3,
         );
       }
+      if (
+        requestedTrackingRef &&
+        canonicalCurrentTrackingRef &&
+        requestedTrackingRef !== canonicalCurrentTrackingRef
+      ) {
+        throw new StashError(
+          "source-mismatch",
+          `Update tracking ref does not match the managed provenance for "${metadata.name}".`,
+          3,
+        );
+      }
       const provenanceWillChange =
         snapshot.treeHash !== record.treeHash ||
         (requestedRevision !== undefined &&
           requestedRevision !== currentRevision) ||
         (requestedRepositoryPath !== undefined &&
-          requestedRepositoryPath !== canonicalCurrentRepositoryPath);
+          requestedRepositoryPath !== canonicalCurrentRepositoryPath) ||
+        (requestedTrackingRef !== undefined &&
+          requestedTrackingRef !== canonicalCurrentTrackingRef);
       if (
         canonicalCurrentSourceUrl &&
         provenanceWillChange &&
@@ -1824,7 +1961,7 @@ class StashLifecycleImplementation implements StashLifecycle {
       ) {
         throw new StashError(
           "invalid-argument",
-          "update requires --source-url when changing content, revision, or repository path with recorded remote provenance.",
+          "update requires --source-url when changing content, revision, repository path, or tracking ref with recorded remote provenance.",
           2,
         );
       }
@@ -1855,6 +1992,8 @@ class StashLifecycleImplementation implements StashLifecycle {
       const effectiveRevision = requestedRevision ?? currentRevision;
       const effectiveRepositoryPath =
         requestedRepositoryPath ?? canonicalCurrentRepositoryPath;
+      const effectiveTrackingRef =
+        requestedTrackingRef ?? canonicalCurrentTrackingRef;
       if (
         effectiveRepositoryPath &&
         (!effectiveRevision || !canonicalImmutableRevision(effectiveRevision))
@@ -1877,6 +2016,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           ...(effectiveRepositoryPath
             ? { repositoryPath: effectiveRepositoryPath }
             : {}),
+          ...(effectiveTrackingRef ? { trackingRef: effectiveTrackingRef } : {}),
           updatedAt: timestamp,
         },
         compatibility: metadata.compatibility,
@@ -1914,7 +2054,15 @@ class StashLifecycleImplementation implements StashLifecycle {
         const repositoryPathChanged =
           requestedRepositoryPath !== undefined &&
           requestedRepositoryPath !== canonicalCurrentRepositoryPath;
-        if (!sourceUrlChanged && !revisionChanged && !repositoryPathChanged) {
+        const trackingRefChanged =
+          requestedTrackingRef !== undefined &&
+          requestedTrackingRef !== canonicalCurrentTrackingRef;
+        if (
+          !sourceUrlChanged &&
+          !revisionChanged &&
+          !repositoryPathChanged &&
+          !trackingRefChanged
+        ) {
           return resultFor("already-current");
         }
         await this.#writeRecord(updatedRecord);
@@ -1971,7 +2119,8 @@ class StashLifecycleImplementation implements StashLifecycle {
           commitRecord.treeHash !== record.treeHash ||
           commitRecord.source.revision !== currentRevision ||
           commitRecord.source.url !== currentSourceUrl ||
-          commitRecord.source.repositoryPath !== currentRepositoryPath
+          commitRecord.source.repositoryPath !== currentRepositoryPath ||
+          commitRecord.source.trackingRef !== currentTrackingRef
         ) {
           throw new StashError(
             "managed-version-conflict",
@@ -2122,8 +2271,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         const managedSnapshot = await snapshotTree(managedPath);
         if (
           managedSnapshot.treeHash !== existingRecord.treeHash ||
-          sourceSnapshot.treeHash !== existingRecord.treeHash ||
-          trackedDeployment.treeHash !== existingRecord.treeHash
+          sourceSnapshot.treeHash !== trackedDeployment.treeHash
         ) {
           throw new StashError(
             "managed-drift",
@@ -2166,6 +2314,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           request.sourceUrl,
           request.revision,
           request.repositoryPath,
+          request.trackingRef,
           journal.treeHash,
         );
         if (

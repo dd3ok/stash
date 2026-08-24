@@ -49,6 +49,8 @@ function validRecord(
       typeof record.source.revision === "string") &&
     (record.source.repositoryPath === undefined ||
       typeof record.source.repositoryPath === "string") &&
+    (record.source.trackingRef === undefined ||
+      typeof record.source.trackingRef === "string") &&
     Array.isArray(record.deployments) &&
     record.deployments.every(
       (deployment) =>
@@ -228,7 +230,7 @@ export async function projectManagedCopies(
           : {}),
       };
       events.push(
-        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}`,
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}`,
       );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }
