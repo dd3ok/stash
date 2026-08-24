@@ -134,13 +134,14 @@ node <stash-cli> update <local-skill-directory> \
 
 The source must contain `SKILL.md` directly and its name must already exist in
 Stash. Pass `--expected-revision` whenever status reports a current revision.
-For a content replacement with remote provenance, pass the resolved new
-revision. The source URL must match the recorded provenance; adding a URL to a
-record that has none is allowed only when supplied explicitly.
+For a content or revision change with remote provenance, pass the recorded
+source URL and the resolved new revision. The source URL must match the recorded
+provenance; adding a URL to a record that has none is allowed only when supplied
+explicitly.
 
 Interpret the result as follows:
 
-- `updated`: the verified managed tree was atomically replaced.
+- `updated`: the verified managed tree was transactionally replaced.
 - `metadata-updated`: the tree was unchanged and only provenance advanced.
 - `already-current`: neither content nor requested provenance changed.
 

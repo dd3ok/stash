@@ -21,7 +21,10 @@ import {
 import {
   createStashLifecycle as createStashLifecycleForCurrentHome,
 } from "../src/stash-lifecycle.js";
-import type { CreateStashLifecycleOptions } from "../src/types.js";
+import type {
+  CreateStashLifecycleOptions,
+  ManagedSkillRecord,
+} from "../src/types.js";
 import { StashError } from "../src/types.js";
 
 async function createStashLifecycle(
@@ -123,7 +126,7 @@ test("install creates a searchable inactive canonical copy without changing sour
   assert.equal(repeated.status, "already-stored");
 });
 
-test("update atomically replaces a managed tree while preserving its identity", async () => {
+test("update transactionally replaces a managed tree while preserving its identity", async () => {
   const fixture = await lifecycleFixture();
   const sourceUrl = "https://github.com/example/rare-skills";
   const lifecycle = await createStashLifecycle({
@@ -231,6 +234,7 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
       source: replacement,
       expectedTreeHash: installed.treeHash,
       expectedRevision: "rev-1",
+      revision: "rev-2",
     }),
     (error: unknown) =>
       error instanceof StashError && error.code === "invalid-argument",
@@ -240,6 +244,7 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
     source: fixture.sourceRoot,
     expectedTreeHash: installed.treeHash,
     expectedRevision: "rev-1",
+    sourceUrl,
     revision: "rev-2",
   });
   assert.equal(metadataUpdated.status, "metadata-updated");
@@ -816,6 +821,102 @@ test("the next mutation rolls back an update interrupted before record commit", 
       "utf8",
     ),
     "fixture guide\n",
+  );
+  await assert.rejects(access(backupPath));
+  await assert.rejects(access(journalPath));
+});
+
+test("the next mutation finalizes an update interrupted after record commit", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const replacement = await createStandaloneSkill(
+    path.join(fixture.base, "replacement"),
+    "rare-skill",
+  );
+  await writeFile(
+    path.join(replacement, "references", "guide.md"),
+    "updated guide\n",
+    "utf8",
+  );
+  const alternateLifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: path.join(fixture.base, "alternate-managed"),
+    lifecycleHome: path.join(fixture.base, "alternate-home"),
+  });
+  const alternate = await alternateLifecycle.install({ source: replacement });
+  const operationId = "00000000-0000-4000-8000-000000000011";
+  const stagingRoot = path.join(fixture.managedRoot, ".stash", "staging");
+  const stagePath = path.join(stagingRoot, `update-${operationId}-next`);
+  const backupPath = path.join(
+    stagingRoot,
+    `update-${operationId}-previous`,
+  );
+  await rename(installed.managedPath, backupPath);
+  const committedManaged = await createStandaloneSkill(
+    fixture.managedRoot,
+    "rare-skill",
+  );
+  await writeFile(
+    path.join(committedManaged, "references", "guide.md"),
+    "updated guide\n",
+    "utf8",
+  );
+  const recordPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "records",
+    "rare-skill.json",
+  );
+  const record = JSON.parse(
+    await readFile(recordPath, "utf8"),
+  ) as ManagedSkillRecord;
+  record.treeHash = alternate.treeHash;
+  record.source.location = replacement;
+  record.lastValidatedAt = new Date().toISOString();
+  await writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  const journalPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "journal",
+    `${operationId}.json`,
+  );
+  await writeFile(
+    journalPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        kind: "managed-update",
+        operationId,
+        stage: "record-committed",
+        name: "rare-skill",
+        skillId: installed.skillId,
+        oldTreeHash: installed.treeHash,
+        newTreeHash: alternate.treeHash,
+        managedPath: installed.managedPath,
+        stagePath,
+        backupPath,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const recovered = await lifecycle.install({ source: replacement });
+  assert.equal(recovered.status, "already-stored");
+  assert.equal(recovered.treeHash, alternate.treeHash);
+  assert.equal(
+    await readFile(
+      path.join(installed.managedPath, "references", "guide.md"),
+      "utf8",
+    ),
+    "updated guide\n",
   );
   await assert.rejects(access(backupPath));
   await assert.rejects(access(journalPath));

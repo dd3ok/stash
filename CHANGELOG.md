@@ -6,8 +6,8 @@
 - Add explicit local `install`/`archive`/`activate`/`deactivate`/`status`
   commands with provenance, tree hashes, tracked deployments, and drift guards.
 - Add guarded local `update` with tree/revision compare-and-swap, source identity
-  checks, no-copy metadata advances, atomic replacement journals, and explicit
-  outdated-deployment reporting without automatic deployment mutation.
+  checks, no-copy metadata advances, recoverable replacement journals, and
+  explicit outdated-deployment reporting without automatic deployment mutation.
 - Add stable skill/deployment identities, explicit ownership and target records,
   orthogonal status fields, archive journals, guarded dead-owner lock recovery,
   and fail-closed malformed lock handling.

@@ -374,20 +374,11 @@ class StashLifecycleImplementation implements StashLifecycle {
     }
   }
 
-  async #advanceArchiveJournal(
-    journal: ArchiveJournal,
-    stage: ArchiveJournal["stage"],
+  async #advanceJournal<Journal extends LifecycleJournal>(
+    journal: Journal,
+    stage: Journal["stage"],
   ): Promise<void> {
-    const next = { ...journal, stage };
-    await this.#writeJournal(next);
-    journal.stage = stage;
-  }
-
-  async #advanceUpdateJournal(
-    journal: ManagedUpdateJournal,
-    stage: ManagedUpdateJournal["stage"],
-  ): Promise<void> {
-    const next = { ...journal, stage };
+    const next = { ...journal, stage } as Journal;
     await this.#writeJournal(next);
     journal.stage = stage;
   }
@@ -1253,6 +1244,18 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       const currentSourceUrl = record.source.url;
       const requestedSourceUrl = request.sourceUrl?.trim() || undefined;
+      const requestedRevision = request.revision?.trim() || undefined;
+      const provenanceWillChange =
+        snapshot.treeHash !== record.treeHash ||
+        (requestedRevision !== undefined &&
+          requestedRevision !== currentRevision);
+      if (currentSourceUrl && provenanceWillChange && !requestedSourceUrl) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --source-url when changing content or revision with recorded remote provenance.",
+          2,
+        );
+      }
       if (requestedSourceUrl && currentSourceUrl) {
         const currentIdentity =
           normalizeSourceUrl(currentSourceUrl) ??
@@ -1269,7 +1272,6 @@ class StashLifecycleImplementation implements StashLifecycle {
         }
       }
       const effectiveSourceUrl = requestedSourceUrl ?? currentSourceUrl;
-      const requestedRevision = request.revision?.trim() || undefined;
       if (
         snapshot.treeHash !== record.treeHash &&
         (effectiveSourceUrl || currentRevision !== undefined) &&
@@ -1371,9 +1373,9 @@ class StashLifecycleImplementation implements StashLifecycle {
         await this.#writeJournal(journal);
         journalWritten = true;
         await rename(managedPath, backupPath);
-        await this.#advanceUpdateJournal(journal, "old-tombstoned");
+        await this.#advanceJournal(journal, "old-tombstoned");
         await rename(stagePath, managedPath);
-        await this.#advanceUpdateJournal(journal, "new-committed");
+        await this.#advanceJournal(journal, "new-committed");
         const committedSnapshot = await snapshotTree(managedPath);
         if (committedSnapshot.treeHash !== snapshot.treeHash) {
           throw new StashError(
@@ -1405,7 +1407,7 @@ class StashLifecycleImplementation implements StashLifecycle {
 
       let warning: string | undefined;
       try {
-        await this.#advanceUpdateJournal(journal, "record-committed");
+        await this.#advanceJournal(journal, "record-committed");
       } catch (error) {
         warning = `Update committed, but its recovery journal remains for later cleanup: ${String(error)}`;
       }
@@ -1550,9 +1552,9 @@ class StashLifecycleImplementation implements StashLifecycle {
             4,
           );
         }
-        await this.#advanceArchiveJournal(journal, "managed-committed");
+        await this.#advanceJournal(journal, "managed-committed");
         await rename(source, tombstone);
-        await this.#advanceArchiveJournal(journal, "source-tombstoned");
+        await this.#advanceJournal(journal, "source-tombstoned");
         const movedSnapshot = await snapshotTree(tombstone);
         if (movedSnapshot.treeHash !== stored.record.treeHash) {
           throw new StashError(
@@ -1561,7 +1563,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             4,
           );
         }
-        await this.#advanceArchiveJournal(journal, "archive-committed");
+        await this.#advanceJournal(journal, "archive-committed");
         let warning: string | undefined;
         try {
           await rm(tombstone, { recursive: true, force: false });
@@ -1888,13 +1890,14 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       const deployments: LifecycleSkillStatus["deployments"] = [];
       for (const deployment of record.deployments) {
+        const current = deployment.treeHash === record.treeHash;
         const type = await pathType(deployment.path);
         if (type === "missing") {
           deployments.push({
             ...deployment,
             state: "missing",
             integrity: "unknown",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "absent",
@@ -1908,7 +1911,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             ...deployment,
             state: "drifted",
             integrity: "drifted",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
@@ -1925,7 +1928,7 @@ class StashLifecycleImplementation implements StashLifecycle {
               deployedHash === deployment.treeHash ? "deployed" : "drifted",
             integrity:
               deployedHash === deployment.treeHash ? "verified" : "drifted",
-            current: deployment.treeHash === record.treeHash,
+            current,
             actualTreeHash: deployedHash,
             hostObservation: {
               override: "unknown",
@@ -1938,7 +1941,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             ...deployment,
             state: "drifted",
             integrity: "unknown",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",

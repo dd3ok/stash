@@ -9885,12 +9885,7 @@ var StashLifecycleImplementation = class {
       throw error;
     }
   }
-  async #advanceArchiveJournal(journal, stage) {
-    const next = { ...journal, stage };
-    await this.#writeJournal(next);
-    journal.stage = stage;
-  }
-  async #advanceUpdateJournal(journal, stage) {
+  async #advanceJournal(journal, stage) {
     const next = { ...journal, stage };
     await this.#writeJournal(next);
     journal.stage = stage;
@@ -10616,6 +10611,15 @@ var StashLifecycleImplementation = class {
       }
       const currentSourceUrl = record.source.url;
       const requestedSourceUrl = request.sourceUrl?.trim() || void 0;
+      const requestedRevision = request.revision?.trim() || void 0;
+      const provenanceWillChange = snapshot.treeHash !== record.treeHash || requestedRevision !== void 0 && requestedRevision !== currentRevision;
+      if (currentSourceUrl && provenanceWillChange && !requestedSourceUrl) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --source-url when changing content or revision with recorded remote provenance.",
+          2
+        );
+      }
       if (requestedSourceUrl && currentSourceUrl) {
         const currentIdentity = normalizeSourceUrl(currentSourceUrl) ?? normalizeSourceIdentity(currentSourceUrl);
         const requestedIdentity = normalizeSourceUrl(requestedSourceUrl) ?? normalizeSourceIdentity(requestedSourceUrl);
@@ -10628,7 +10632,6 @@ var StashLifecycleImplementation = class {
         }
       }
       const effectiveSourceUrl = requestedSourceUrl ?? currentSourceUrl;
-      const requestedRevision = request.revision?.trim() || void 0;
       if (snapshot.treeHash !== record.treeHash && (effectiveSourceUrl || currentRevision !== void 0) && !requestedRevision) {
         throw new StashError(
           "invalid-argument",
@@ -10718,9 +10721,9 @@ var StashLifecycleImplementation = class {
         await this.#writeJournal(journal);
         journalWritten = true;
         await rename2(managedPath, backupPath);
-        await this.#advanceUpdateJournal(journal, "old-tombstoned");
+        await this.#advanceJournal(journal, "old-tombstoned");
         await rename2(stagePath, managedPath);
-        await this.#advanceUpdateJournal(journal, "new-committed");
+        await this.#advanceJournal(journal, "new-committed");
         const committedSnapshot = await snapshotTree(managedPath);
         if (committedSnapshot.treeHash !== snapshot.treeHash) {
           throw new StashError(
@@ -10751,7 +10754,7 @@ var StashLifecycleImplementation = class {
       }
       let warning;
       try {
-        await this.#advanceUpdateJournal(journal, "record-committed");
+        await this.#advanceJournal(journal, "record-committed");
       } catch (error) {
         warning = `Update committed, but its recovery journal remains for later cleanup: ${String(error)}`;
       }
@@ -10876,9 +10879,9 @@ var StashLifecycleImplementation = class {
             4
           );
         }
-        await this.#advanceArchiveJournal(journal, "managed-committed");
+        await this.#advanceJournal(journal, "managed-committed");
         await rename2(source, tombstone);
-        await this.#advanceArchiveJournal(journal, "source-tombstoned");
+        await this.#advanceJournal(journal, "source-tombstoned");
         const movedSnapshot = await snapshotTree(tombstone);
         if (movedSnapshot.treeHash !== stored.record.treeHash) {
           throw new StashError(
@@ -10887,7 +10890,7 @@ var StashLifecycleImplementation = class {
             4
           );
         }
-        await this.#advanceArchiveJournal(journal, "archive-committed");
+        await this.#advanceJournal(journal, "archive-committed");
         let warning;
         try {
           await rm(tombstone, { recursive: true, force: false });
@@ -11179,13 +11182,14 @@ var StashLifecycleImplementation = class {
       }
       const deployments = [];
       for (const deployment of record.deployments) {
+        const current = deployment.treeHash === record.treeHash;
         const type = await pathType(deployment.path);
         if (type === "missing") {
           deployments.push({
             ...deployment,
             state: "missing",
             integrity: "unknown",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "absent",
@@ -11199,7 +11203,7 @@ var StashLifecycleImplementation = class {
             ...deployment,
             state: "drifted",
             integrity: "drifted",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
@@ -11214,7 +11218,7 @@ var StashLifecycleImplementation = class {
             ...deployment,
             state: deployedHash === deployment.treeHash ? "deployed" : "drifted",
             integrity: deployedHash === deployment.treeHash ? "verified" : "drifted",
-            current: deployment.treeHash === record.treeHash,
+            current,
             actualTreeHash: deployedHash,
             hostObservation: {
               override: "unknown",
@@ -11227,7 +11231,7 @@ var StashLifecycleImplementation = class {
             ...deployment,
             state: "drifted",
             integrity: "unknown",
-            current: deployment.treeHash === record.treeHash,
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",

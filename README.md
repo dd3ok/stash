@@ -126,9 +126,10 @@ skill to import a repository skill, the agent may stage the pinned revision
 outside host discovery, inspect it, and pass that local directory to `install`.
 The same rule applies to `update`: it replaces only an existing managed copy,
 requires the caller's current tree hash (and current revision when recorded),
-and rejects a changed source identity. A same-tree revision advance updates
+and requires the matching source URL for remote-provenance changes. A same-tree
+revision advance updates
 metadata without copying content. Changed content is staged, re-hashed, and
-atomically swapped under a recovery journal. Existing deployments remain
+transactionally swapped under a recovery journal. Existing deployments remain
 untouched and are reported as outdated until explicitly deactivated and
 activated again.
 Install may read a selected skill inside a configured catalog but never mutates
