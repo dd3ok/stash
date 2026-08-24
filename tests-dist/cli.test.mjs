@@ -65,6 +65,7 @@ source:
 test("bundled skill CLI installs, resolves, deploys, and deactivates a managed skill", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-lifecycle-dist-test-"));
   const source = path.join(temp, "source", "rare-skill");
+  const replacement = path.join(temp, "replacement", "rare-skill");
   const managedRoot = path.join(temp, "managed");
   const sandboxHome = path.join(temp, "home");
   const hostRoot = path.join(sandboxHome, ".agents", "skills");
@@ -79,6 +80,12 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
     "---\nname: rare-skill\ndescription: A bundled lifecycle fixture.\n---\n\n# Rare\n",
     "utf8",
   );
+  await mkdir(replacement, { recursive: true });
+  await writeFile(
+    path.join(replacement, "SKILL.md"),
+    "---\nname: rare-skill\ndescription: An updated bundled lifecycle fixture.\n---\n\n# Rare updated\n",
+    "utf8",
+  );
   const common = ["--managed-root", managedRoot, "--json"];
   const installed = JSON.parse(
     (
@@ -91,6 +98,21 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
     ).stdout,
   );
   assert.equal(installed.status, "stored");
+
+  const updated = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "update",
+        replacement,
+        "--expected-tree-hash",
+        installed.treeHash,
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(updated.status, "updated");
+  assert.equal(updated.skillId, installed.skillId);
 
   const resolved = JSON.parse(
     (
@@ -245,6 +267,7 @@ test("npm package entrypoints match the compiled layout", async () => {
   const { stdout } = await execFileAsync(process.execPath, [cli, "help"]);
   assert.match(stdout, /stash exact <name>/u);
   assert.match(stdout, /stash install <local-skill-dir>/u);
+  assert.match(stdout, /stash update <local-skill-dir>/u);
   assert.match(stdout, /--source <id\|name\|url>/u);
 });
 

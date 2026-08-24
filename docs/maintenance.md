@@ -64,7 +64,7 @@ that no reclaimer is alive. Repair it only after all of these checks:
 4. move `lifecycle.reclaim` to a uniquely named quarantine outside `.stash`
    instead of deleting it;
 5. run one non-destructive lifecycle mutation such as an idempotent `install`,
-   allowing the lock preflight to recover any archive journal;
+   allowing the lock preflight to recover any archive or update journal;
 6. run `stash status --json` and retain the quarantine until state is verified.
 
 Never remove a live owner, treat PID age as proof, edit a journal, or overwrite
@@ -97,9 +97,11 @@ Preserve these invariants:
 - lifecycle writes are limited to the managed root and explicit standalone
   targets;
 - lifecycle never overwrites, follows links, or deletes untracked/drifted paths;
-- staged copies and destructive tombstones are hash-verified;
-- archives are journaled and recover deterministically without overwriting a
-  source path that became occupied;
+- staged copies, update backups, and destructive tombstones are hash-verified;
+- archives and changed-tree managed updates are journaled and recover
+  deterministically without overwriting an occupied source or managed path;
+- updates compare the caller's expected tree/revision, preserve source identity,
+  and never rewrite deployment copies implicitly;
 - stable skill/deployment IDs, ownership, targets, and hashes must agree before
   withdrawal;
 - hash-matching catalog sources and Stash-owned deployments fold into the

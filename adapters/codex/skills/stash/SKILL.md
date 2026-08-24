@@ -1,6 +1,6 @@
 ---
 name: stash
-description: Search a separate local Agent Skills library or explicitly manage inactive standalone skills. Use only when the user explicitly invokes `$stash` to open, find, list, install into Stash, archive, activate, deactivate, or inspect a stored skill. Do not invoke Stash implicitly for ordinary work.
+description: Search a separate local Agent Skills library or explicitly manage inactive standalone skills. Use only when the user explicitly invokes `$stash` to open, find, list, install or update Stash, archive, activate, deactivate, or inspect a stored skill. Do not invoke Stash implicitly for ordinary work.
 ---
 
 # Stash
@@ -19,6 +19,8 @@ Classify the text after `$stash`.
 
 - `install <source>`, `import <source>`, or a request to put a skill directly
   into Stash as inactive: follow [Lifecycle operations](#lifecycle-operations).
+- `update <source-or-name>` or a request to refresh one or every managed skill:
+  follow [Update a managed copy](#update-a-managed-copy).
 - `archive <skill-or-path>`, `activate <name>`, `deactivate <name>`, or
   `status [name]`: follow [Lifecycle operations](#lifecycle-operations).
 - `list`: run `stash list --json`.
@@ -111,6 +113,54 @@ skill discovery path, inspect the selected skill root, then run the local
 install command with its source URL and resolved revision. Do not execute
 repository content. Do not install it into a host skill folder first. Remove
 only the temporary staging directory after a successful managed import.
+
+### Update a managed copy
+
+Update only an existing managed canonical copy. Read its current state first:
+
+```text
+node <stash-cli> status <name> --json
+```
+
+Stage and inspect the replacement outside every host discovery path, then run:
+
+```text
+node <stash-cli> update <local-skill-directory> \
+  --expected-tree-hash <current-store-expectedTreeHash> \
+  [--expected-revision <current-source-revision>] \
+  [--source-url <url>] [--revision <new-revision>] --json
+```
+
+The source must contain `SKILL.md` directly and its name must already exist in
+Stash. Pass `--expected-revision` whenever status reports a current revision.
+For a content replacement with remote provenance, pass the resolved new
+revision. The source URL must match the recorded provenance; adding a URL to a
+record that has none is allowed only when supplied explicitly.
+
+Interpret the result as follows:
+
+- `updated`: the verified managed tree was atomically replaced.
+- `metadata-updated`: the tree was unchanged and only provenance advanced.
+- `already-current`: neither content nor requested provenance changed.
+
+Update preserves the stable `skillId` and deployment records. It never rewrites
+host deployments. Report `outdatedDeployments`; `status` marks a deployment
+with `current: false` when it still contains the previous managed tree. Refresh
+such a deployment only through an explicit `deactivate` followed by `activate`.
+
+For an all-managed update request, get unfiltered `status`, group records by
+source repository URL, and stage each repository once. Locate the skill root by
+a direct `SKILL.md` whose frontmatter name exactly matches the managed name.
+Compare the recorded revision with the remote default revision, and compare the
+selected skill path between those revisions. Run `update` for changed trees and
+also for unchanged trees whose repository revision advanced, so later checks do
+not repeat the same no-op. Report records without a source URL or revision; do
+not guess their upstream.
+
+The lifecycle lock, compare-and-swap fields, tree hashes, and update journal are
+the authority for the replacement. Preserve a failed staging directory for
+diagnosis. Remove it only after `updated`, `metadata-updated`, or
+`already-current` returns successfully.
 
 ### Archive a standalone skill
 

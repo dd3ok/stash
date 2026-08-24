@@ -53,6 +53,7 @@ The Interface is the test surface. Search libraries, tokenization, index shape, 
 ```ts
 interface StashLifecycle {
   install(request: LifecycleInstallRequest): Promise<LifecycleMutationResult>;
+  update(request: LifecycleUpdateRequest): Promise<LifecycleMutationResult>;
   archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;
   activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
   deactivate(request: LifecycleDeactivateRequest): Promise<LifecycleMutationResult>;
@@ -94,9 +95,9 @@ Responsibilities:
 - `util.ts`: hashing, cursor integrity, path containment, tokenization, platform locations.
 - `stash-catalog.ts`: orchestrate the Interface and normalize errors/results.
 - `stash-lifecycle.ts`: validate portable skill trees, serialize mutations,
-  stage atomic copies, maintain archive recovery journals, record stable skill
-  and deployment identities, detect drift, and enforce standalone-only
-  destructive boundaries.
+  stage atomic copies, maintain archive and managed-update recovery journals,
+  record stable skill and deployment identities, detect drift, and enforce
+  standalone-only destructive boundaries.
 
 ## Adapter seam
 
@@ -167,6 +168,22 @@ explicit local skill → reject links/special files/path collisions
   → atomic rename → provenance record → stored
 ```
 
+Update uses caller-observed state as a compare-and-swap boundary:
+
+```text
+explicit local skill + expected tree/revision → verify current managed state
+  → reject changed source identity → snapshot + re-hash staging
+  → same tree: metadata-only record advance
+  → changed tree: journal → managed-to-backup → staging-to-managed
+  → provenance record commit → verified cleanup
+```
+
+An interrupted changed-tree update either restores the verified backup before
+record commit or finishes cleanup after record commit. The stable `skillId` and
+deployment records do not change. A deployment whose recorded tree differs
+from the new managed tree is reported as not current and is never overwritten
+automatically.
+
 Archive adds a destructive second phase only for an explicitly selected
 standalone directory:
 
@@ -203,7 +220,7 @@ The first release intentionally excludes:
 - a second LLM router;
 - a background daemon;
 - transcript telemetry;
-- remote Git installation and updates;
+- remote URL installation and autonomous updates;
 - symlink deployment and overwrite;
 - plugin lifecycle and vendor setting mutation;
 - workspace lifecycle targets and flat-file Antigravity CLI skills;

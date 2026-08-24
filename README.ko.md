@@ -101,6 +101,10 @@ defaults:
 
 ```bash
 stash install D:/downloads/rare-skill
+stash update D:/staging/rare-skill-v2 \
+  --expected-tree-hash <current-hash> \
+  --expected-revision <current-revision> \
+  --revision <new-revision>
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -118,14 +122,22 @@ CLI는 로컬 디렉터리만 가져옵니다. 사용자가 Stash 스킬에 저�
 스킬을 명시적으로 가져오라고 요청하면, 에이전트가 호스트 검색 경로 밖에
 고정 revision을 임시로 준비하고 검토한 뒤 그 로컬 경로를 `install`에
 전달할 수 있습니다. 설정된 catalog 안의 스킬도 원본을 변경하지 않고
-설치할 수 있습니다. 같은 원본이나 Stash 소유 배포본이 catalog 검색에도
-나오면 해시가 일치할 때 관리형 canonical 결과의 관련 사본으로 접습니다.
+설치할 수 있습니다. `update`도 같은 원칙으로 기존 관리형 사본만 교체하며,
+호출자가 확인한 현재 트리 해시와 기록된 경우 현재 revision을 요구하고 원본
+식별자가 달라지면 거부합니다. 트리가 같고 revision만 바뀐 경우에는 파일을
+다시 복사하지 않고 메타데이터만 갱신합니다. 내용이 달라지면 staging 사본을
+재검증한 뒤 복구 journal 아래에서 원자적으로 교체합니다. 기존 배포본은
+자동으로 덮어쓰지 않고 outdated 상태로 보고하며, 사용자가 명시적으로
+deactivate 후 activate해야 새 내용으로 바뀝니다. 같은 원본이나 Stash 소유
+배포본이 catalog 검색에도 나오면 해시가 일치할 때 관리형 canonical 결과의
+관련 사본으로 접습니다.
 변경되었거나 연관되지 않은 사본은 별도 결과와 경고로 남깁니다.
 
-첫 생명주기 버전은 로컬 전용입니다. 원격 Git, 심볼릭 링크 배포, 덮어쓰기,
-플러그인 변경, 벤더 설정 변경, workspace 생명주기 대상은 지원하지 않습니다.
-Antigravity CLI의 독립 스킬 형식은 문서상 디렉터리가 아닌 단일 Markdown
-파일이므로 생명주기 명령의 대상으로 사용할 수 없습니다.
+생명주기 CLI 입력은 로컬 전용입니다. 원격 URL 입력, 심볼릭 링크 배포,
+보호되지 않은 덮어쓰기, 플러그인 변경, 벤더 설정 변경, workspace 생명주기
+대상은 지원하지 않습니다. Antigravity CLI의 독립 스킬 형식은 문서상
+디렉터리가 아닌 단일 Markdown 파일이므로 생명주기 명령의 대상으로 사용할
+수 없습니다.
 
 ## 제품별 지원
 
@@ -147,7 +159,7 @@ Antigravity 어댑터는 생성되지만, 지원을 공개하기 전에 대상 `
 - 네트워크, embedding 모델, vector database, 별도 LLM 라우터를 사용하지
   않습니다.
 - 스킬을 읽으면서 포함된 스크립트를 실행하지 않습니다.
-- 마켓플레이스, 원격 업데이트 도구, 권한 시스템, 샌드박스 또는 보안
+- 마켓플레이스, 자동 원격 업데이트 도구, 권한 시스템, 샌드박스 또는 보안
   검사기가 아닙니다. 플러그인 생명주기는 각 호스트가 관리합니다.
 
 ## 문서

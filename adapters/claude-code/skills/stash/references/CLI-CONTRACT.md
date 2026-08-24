@@ -48,6 +48,9 @@ external catalog.
 
 - `install`/`import`/`add`: copy a local skill snapshot into the inactive
   managed store and preserve the source.
+- `update`: compare the caller's expected current tree and revision, then
+  atomically replace an existing managed snapshot or advance provenance when
+  its tree is unchanged. The stable `skillId` and deployment records remain.
 - `archive`: store and verify an explicitly selected standalone skill, then
   remove that source from its discovery path.
 - `activate`: copy a managed skill to a host discovery root and record
@@ -63,6 +66,20 @@ symlinks/junctions, overwrites, workspace targets, and all Antigravity CLI
 flat-Markdown deployment are rejected. Every managed record has a stable
 `skillId`; each deployment has its own ID plus the same `skillId`, Stash
 ownership, target ID, and expected tree hash.
+
+`update` returns `updated`, `metadata-updated`, or `already-current`. It requires
+`--expected-tree-hash`; when the current source has a revision, it also requires
+the matching `--expected-revision`. A remote-provenance content replacement
+requires the new `--revision`. A mismatched tree or revision is a
+compare-and-swap conflict, and a different source URL is a provenance conflict.
+Update never mutates deployments. `outdatedDeployments` counts tracked copies
+whose tree differs from the new managed tree, and `status` reports their
+orthogonal presence/integrity plus `current: false`.
+
+Content replacement uses a verified next tree, a verified previous-tree backup,
+and a lifecycle journal under the managed metadata root. Recovery rolls back
+while the record names the old hash and finalizes when the record names the new
+hash. Any missing, linked, unexpected, or hash-mismatched path fails closed.
 
 When default resolution includes the managed catalog, `relatedCopies` lists
 hash-matching preserved sources and Stash-owned deployments that were folded

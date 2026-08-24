@@ -103,6 +103,10 @@ local skill directory and leaves the source untouched:
 
 ```bash
 stash install D:/downloads/rare-skill
+stash update D:/staging/rare-skill-v2 \
+  --expected-tree-hash <current-hash> \
+  --expected-revision <current-revision> \
+  --revision <new-revision>
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -120,15 +124,23 @@ a host-level enable/disable override is enabled.
 The CLI imports local directories only. When a user explicitly asks the Stash
 skill to import a repository skill, the agent may stage the pinned revision
 outside host discovery, inspect it, and pass that local directory to `install`.
+The same rule applies to `update`: it replaces only an existing managed copy,
+requires the caller's current tree hash (and current revision when recorded),
+and rejects a changed source identity. A same-tree revision advance updates
+metadata without copying content. Changed content is staged, re-hashed, and
+atomically swapped under a recovery journal. Existing deployments remain
+untouched and are reported as outdated until explicitly deactivated and
+activated again.
 Install may read a selected skill inside a configured catalog but never mutates
 that source. When a hash-matching source or Stash-owned deployment also appears
 in an indexed catalog, search folds it into the managed canonical result as a
 related copy. A drifted or unrelated copy remains separate and visible.
 
-The first lifecycle release is intentionally local-only: no remote Git source,
-symlink deployment, overwrite, plugin mutation, vendor setting mutation, or
-workspace lifecycle target. Antigravity CLI lifecycle is rejected because its
-documented standalone skill layouts are flat Markdown rather than directories.
+Lifecycle commands are intentionally local-input-only: no remote URL input,
+symlink deployment, unguarded overwrite, plugin mutation, vendor setting
+mutation, or workspace lifecycle target. Antigravity CLI lifecycle is rejected
+because its documented standalone skill layouts are flat Markdown rather than
+directories.
 
 ## Vendor support
 
@@ -150,8 +162,8 @@ Antigravity adapters are generated, but should be tested against the target
 - Search uses no network, embedding model, vector database, or second LLM
   router.
 - Reading a skill does not execute its scripts.
-- Stash is not a marketplace, remote updater, permission system, sandbox, or
-  security scanner. Plugin lifecycle remains owned by each host.
+- Stash is not a marketplace, autonomous remote updater, permission system,
+  sandbox, or security scanner. Plugin lifecycle remains owned by each host.
 
 ## Documentation
 
