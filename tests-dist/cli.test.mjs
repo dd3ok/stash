@@ -93,6 +93,12 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         bundledCli,
         "install",
         source,
+        "--source-url",
+        "https://github.com/example/skills",
+        "--revision",
+        "1".repeat(40),
+        "--repository-path",
+        "skills/rare-skill",
         ...common,
       ], { env: cliEnvironment })
     ).stdout,
@@ -107,12 +113,34 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         replacement,
         "--expected-tree-hash",
         installed.treeHash,
+        "--expected-revision",
+        "1".repeat(40),
+        "--source-url",
+        "https://github.com/example/skills",
+        "--revision",
+        "2".repeat(40),
+        "--repository-path",
+        "skills/rare-skill",
         ...common,
       ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(updated.status, "updated");
   assert.equal(updated.skillId, installed.skillId);
+  const lifecycleStatus = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "status",
+        "rare-skill",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(
+    lifecycleStatus.skills[0].source.repositoryPath,
+    "skills/rare-skill",
+  );
 
   const resolved = JSON.parse(
     (

@@ -8,6 +8,9 @@
 - Add guarded local `update` with tree/revision compare-and-swap, source identity
   checks, no-copy metadata advances, recoverable replacement journals, and
   explicit outdated-deployment reporting without automatic deployment mutation.
+- Harden update recovery with pre-copy journals, commit-time compare-and-swap,
+  idempotent authorized cleanup, drift-preserving rollback, contained real
+  metadata directories, and exact repository-path provenance for safe bulk use.
 - Add stable skill/deployment identities, explicit ownership and target records,
   orthogonal status fields, archive journals, guarded dead-owner lock recovery,
   and fail-closed malformed lock handling.

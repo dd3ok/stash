@@ -269,6 +269,7 @@ export interface LifecycleSource {
   updatedAt?: string;
   url?: string;
   revision?: string;
+  repositoryPath?: string;
 }
 
 export interface LifecycleDeployment {
@@ -307,6 +308,7 @@ export interface LifecycleInstallRequest {
   source: string;
   sourceUrl?: string;
   revision?: string;
+  repositoryPath?: string;
 }
 
 export interface LifecycleUpdateRequest {
@@ -315,6 +317,7 @@ export interface LifecycleUpdateRequest {
   expectedRevision?: string;
   sourceUrl?: string;
   revision?: string;
+  repositoryPath?: string;
 }
 
 export interface LifecycleArchiveRequest {
@@ -322,6 +325,7 @@ export interface LifecycleArchiveRequest {
   target: LifecycleHostTarget;
   sourceUrl?: string;
   revision?: string;
+  repositoryPath?: string;
 }
 
 export interface LifecycleActivateRequest {

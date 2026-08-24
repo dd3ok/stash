@@ -69,18 +69,30 @@ ownership, target ID, and expected tree hash.
 
 `update` returns `updated`, `metadata-updated`, or `already-current`. It requires
 `--expected-tree-hash`; when the current source has a revision, it also requires
-the matching `--expected-revision`. A remote-provenance content or revision
-change requires the recorded `--source-url` and new `--revision`. A mismatched
-tree or revision is a compare-and-swap conflict, and a missing or different
-source URL is a provenance conflict.
+the matching `--expected-revision`. Remote provenance consists of a canonical
+repository `--source-url`, a caller-resolved full 40- or 64-hex commit object ID
+as `--revision`, and an exact
+case-sensitive `--repository-path` (`.` means repository root). A content,
+revision, or path change against recorded remote provenance requires the
+recorded source URL. Changed remote content must use a new revision. A
+mismatched tree or revision is a compare-and-swap conflict; a different URL or
+recorded repository path is a provenance conflict. Legacy records without a
+repository path remain usable for explicit single-skill operations but must be
+skipped by all-managed automation rather than guessed.
+Introducing a remote URL on a record that had none requires URL, full commit
+object ID, and repository path together.
 Update never mutates deployments. `outdatedDeployments` counts tracked copies
 whose tree differs from the new managed tree, and `status` reports their
 orthogonal presence/integrity plus `current: false`.
 
 Content replacement uses a verified next tree, a verified previous-tree backup,
-and a lifecycle journal under the managed metadata root. Recovery rolls back
-while the record names the old hash and finalizes when the record names the new
-hash. Any missing, linked, unexpected, or hash-mismatched path fails closed.
+commit-time metadata/tree checks, and a lifecycle journal under a real-directory
+managed metadata root. Recovery rolls back while the record names the old hash
+and finalizes when the record names the new hash. Recursive cleanup is retried
+only after the journal authorizes the exact operation-owned discard path. Any
+other missing, linked, unexpected, or hash-mismatched path fails closed. This
+handles interrupted processes; the CLI does not promise fsync-backed power-loss
+durability.
 
 When default resolution includes the managed catalog, `relatedCopies` lists
 hash-matching preserved sources and Stash-owned deployments that were folded

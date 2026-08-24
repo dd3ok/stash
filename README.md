@@ -106,7 +106,9 @@ stash install D:/downloads/rare-skill
 stash update D:/staging/rare-skill-v2 \
   --expected-tree-hash <current-hash> \
   --expected-revision <current-revision> \
-  --revision <new-revision>
+  --source-url https://github.com/example/skills \
+  --revision <new-commit-oid> \
+  --repository-path skills/rare-skill
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -126,12 +128,15 @@ skill to import a repository skill, the agent may stage the pinned revision
 outside host discovery, inspect it, and pass that local directory to `install`.
 The same rule applies to `update`: it replaces only an existing managed copy,
 requires the caller's current tree hash (and current revision when recorded),
-and requires the matching source URL for remote-provenance changes. A same-tree
-revision advance updates
-metadata without copying content. Changed content is staged, re-hashed, and
-transactionally swapped under a recovery journal. Existing deployments remain
-untouched and are reported as outdated until explicitly deactivated and
-activated again.
+and requires the matching source URL for remote-provenance changes. Agents
+record the full 40- or 64-hex commit object ID and exact repository-relative skill path
+(`.` for a repository-root skill), not a mutable branch/tag or a name-based
+guess. A same-tree revision advance updates metadata without copying content.
+Changed content is staged, re-hashed, checked again against the current record
+and tree, and transactionally swapped under a recovery journal. Existing
+deployments remain untouched and are reported as outdated until explicitly
+deactivated and activated again. Interrupted-process recovery is idempotent;
+Stash does not claim fsync-backed power-loss durability.
 Install may read a selected skill inside a configured catalog but never mutates
 that source. When a hash-matching source or Stash-owned deployment also appears
 in an indexed catalog, search folds it into the managed canonical result as a

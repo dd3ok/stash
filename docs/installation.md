@@ -22,14 +22,21 @@ stash status rare-skill
 stash update /path/to/staged-update \
   --expected-tree-hash <current-hash> \
   --expected-revision <current-revision> \
-  --revision <new-revision>
+  --source-url https://github.com/example/skills \
+  --revision <new-commit-oid> \
+  --repository-path skills/rare-skill
 ```
 
 Remote URLs are not accepted by the CLI. Stage a requested repository revision
 outside every host discovery path, review it, and import the local skill root.
+Record the canonical repository URL, caller-resolved full 40- or 64-hex Git
+commit object ID, and
+exact repository-relative skill path; use `.` for a skill at repository root.
 Updating follows the same staging rule and requires compare-and-swap values from
 `stash status --json`. It changes only the managed canonical copy; tracked host
 deployments remain untouched and report whether they still match that copy.
+All-managed automation skips legacy records without complete repository
+provenance instead of searching by skill name.
 Lifecycle deployment is standalone-only: plugins and vendor enable/disable
 settings stay under their host's controls.
 

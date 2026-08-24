@@ -101,7 +101,10 @@ Do not infer permission from a discovery request.
 For a local skill directory, run:
 
 ```text
-node <stash-cli> install <local-skill-directory> [--source-url <url>] [--revision <revision>] --json
+node <stash-cli> install <local-skill-directory> \
+  [--source-url <canonical-repository-url>] \
+  [--revision <resolved-immutable-revision>] \
+  [--repository-path <repository-relative-skill-root>] --json
 ```
 
 The source must contain `SKILL.md` directly. The command copies a verified
@@ -110,9 +113,12 @@ snapshot into the managed store and leaves the source unchanged.
 When the user explicitly provides a remote repository source, stage the
 requested revision in a newly created temporary directory outside every host
 skill discovery path, inspect the selected skill root, then run the local
-install command with its source URL and resolved revision. Do not execute
-repository content. Do not install it into a host skill folder first. Remove
-only the temporary staging directory after a successful managed import.
+install command with its canonical source URL, resolved immutable revision, and
+exact repository-relative skill root (`.` for a root skill). Resolve a branch or
+tag to the full 40- or 64-hex commit object ID before recording it; never record
+a mutable ref as the revision. Do not execute repository content. Do not install it into a host
+skill folder first. Remove only the temporary staging directory after a
+successful managed import.
 
 ### Update a managed copy
 
@@ -128,15 +134,22 @@ Stage and inspect the replacement outside every host discovery path, then run:
 node <stash-cli> update <local-skill-directory> \
   --expected-tree-hash <current-store-expectedTreeHash> \
   [--expected-revision <current-source-revision>] \
-  [--source-url <url>] [--revision <new-revision>] --json
+  [--source-url <canonical-repository-url>] \
+  [--revision <new-resolved-immutable-revision>] \
+  [--repository-path <repository-relative-skill-root>] --json
 ```
 
 The source must contain `SKILL.md` directly and its name must already exist in
 Stash. Pass `--expected-revision` whenever status reports a current revision.
 For a content or revision change with remote provenance, pass the recorded
-source URL and the resolved new revision. The source URL must match the recorded
-provenance; adding a URL to a record that has none is allowed only when supplied
-explicitly.
+source URL and the resolved new full commit object ID. Changed remote content
+must use a revision different from the recorded revision. The source URL and
+repository path are exact provenance identities; URL syntax is canonicalized,
+but repository path spelling and case are preserved and compared exactly.
+Introducing a remote URL on a record that had none is allowed only through an
+explicit single-skill update that supplies the URL, full commit object ID, and
+path together. Existing legacy remote records without a path remain
+single-skill-only until explicitly enriched; bulk automation must skip them.
 
 Interpret the result as follows:
 
@@ -149,18 +162,26 @@ host deployments. Report `outdatedDeployments`; `status` marks a deployment
 with `current: false` when it still contains the previous managed tree. Refresh
 such a deployment only through an explicit `deactivate` followed by `activate`.
 
-For an all-managed update request, get unfiltered `status`, group records by
-source repository URL, and stage each repository once. Locate the skill root by
-a direct `SKILL.md` whose frontmatter name exactly matches the managed name.
-Compare the recorded revision with the remote default revision, and compare the
-selected skill path between those revisions. Run `update` for changed trees and
-also for unchanged trees whose repository revision advanced, so later checks do
-not repeat the same no-op. Report records without a source URL or revision; do
-not guess their upstream.
+For an all-managed update request, get unfiltered `status` and select only
+records that contain `source.url`, `source.revision`, and
+`source.repositoryPath`. Group them by canonical repository URL, resolve the
+remote default ref to an immutable revision, and stage each repository once.
+For every record, address only the exact recorded repository-relative path,
+verify realpath containment inside the staged repository, require `SKILL.md`
+directly at that path, and require its frontmatter name to equal the managed
+name. Never scan the repository for a same-named skill or choose among multiple
+matches. Run `update` for changed trees and also for unchanged trees whose
+immutable repository revision advanced. Report records missing any provenance
+field as `legacy-unresolved` and skip them; never guess or bulk-enrich their
+upstream. Each skill update commits independently, so report all successes,
+skips, and failures rather than claiming batch atomicity.
 
-The lifecycle lock, compare-and-swap fields, tree hashes, and update journal are
-the authority for the replacement. Preserve a failed staging directory for
-diagnosis. Remove it only after `updated`, `metadata-updated`, or
+The lifecycle lock, commit-time compare-and-swap checks, tree hashes, and update
+journal are the authority for the replacement. A later lifecycle mutation
+recovers an interrupted process by either restoring the old managed tree or
+finishing the committed cleanup. This is process-crash recovery, not a claim of
+power-loss durability. Preserve an external failed repository staging directory
+for diagnosis. Remove it only after `updated`, `metadata-updated`, or
 `already-current` returns successfully.
 
 ### Archive a standalone skill

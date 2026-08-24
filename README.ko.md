@@ -104,7 +104,9 @@ stash install D:/downloads/rare-skill
 stash update D:/staging/rare-skill-v2 \
   --expected-tree-hash <current-hash> \
   --expected-revision <current-revision> \
-  --revision <new-revision>
+  --source-url https://github.com/example/skills \
+  --revision <new-commit-oid> \
+  --repository-path skills/rare-skill
 stash archive old-skill --host codex
 stash status rare-skill
 stash activate rare-skill --host codex
@@ -124,11 +126,16 @@ CLI는 로컬 디렉터리만 가져옵니다. 사용자가 Stash 스킬에 저�
 전달할 수 있습니다. 설정된 catalog 안의 스킬도 원본을 변경하지 않고
 설치할 수 있습니다. `update`도 같은 원칙으로 기존 관리형 사본만 교체하며,
 호출자가 확인한 현재 트리 해시와 기록된 경우 현재 revision을 요구하고 원본
-내용이나 revision을 바꿀 때 기록된 원본 URL도 요구합니다. 원본 식별자가
-달라지면 거부합니다. 트리가 같고 revision만 바뀐 경우에는 파일을
-다시 복사하지 않고 메타데이터만 갱신합니다. 내용이 달라지면 staging 사본을
-재검증한 뒤 복구 journal이 보장하는 transaction으로 교체합니다. 기존
-배포본은 자동으로 덮어쓰지 않고 outdated 상태로 보고하며, 사용자가 명시적으로
+내용이나 revision을 바꿀 때 기록된 원본 URL도 요구합니다. 에이전트는 변경될
+수 있는 branch/tag나 이름 추측 대신, 해석이 끝난 40자 또는 64자 16진수
+commit object ID와 정확한
+저장소 상대 스킬 경로(저장소 루트는 `.`)를 기록합니다. 원본 URL이나 기록된
+경로가 달라지면 거부합니다. 트리가 같고 revision만 바뀐 경우에는 파일을 다시
+복사하지 않고 메타데이터만 갱신합니다. 내용이 달라지면 staging 사본을
+재검증하고 교체 직전 현재 레코드와 트리를 다시 비교한 뒤, 복구 journal이
+보장하는 transaction으로 교체합니다. 프로세스 중단 복구는 반복 실행해도
+안전하지만 fsync 기반 전원 장애 내구성을 보장하지는 않습니다. 기존 배포본은
+자동으로 덮어쓰지 않고 outdated 상태로 보고하며, 사용자가 명시적으로
 deactivate 후 activate해야 새 내용으로 바뀝니다. 같은 원본이나 Stash 소유
 배포본이 catalog 검색에도 나오면 해시가 일치할 때 관리형 canonical 결과의
 관련 사본으로 접습니다.

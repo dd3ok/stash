@@ -97,11 +97,18 @@ Preserve these invariants:
 - lifecycle writes are limited to the managed root and explicit standalone
   targets;
 - lifecycle never overwrites, follows links, or deletes untracked/drifted paths;
+- managed metadata roots resolve inside the managed root and are real
+  directories; record and journal inputs are real files;
 - staged copies, update backups, and destructive tombstones are hash-verified;
 - archives and changed-tree managed updates are journaled and recover
   deterministically without overwriting an occupied source or managed path;
-- updates compare the caller's expected tree/revision, preserve source identity,
-  and never rewrite deployment copies implicitly;
+- updates compare the caller's expected tree/revision again at commit time,
+  preserve canonical URL plus exact repository-path identity, require a new
+  caller-resolved immutable revision for changed remote content, and never
+  rewrite deployment copies implicitly;
+- recursive recovery cleanup is permitted only after a journal authorizes the
+  exact operation-owned discard path; process-crash recovery does not imply
+  fsync-backed power-loss durability;
 - stable skill/deployment IDs, ownership, targets, and hashes must agree before
   withdrawal;
 - hash-matching catalog sources and Stash-owned deployments fold into the
