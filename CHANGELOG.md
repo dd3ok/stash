@@ -12,6 +12,9 @@
   idempotent authorized cleanup, drift-preserving rollback, contained real
   metadata directories, exact repository-path/tracking-ref provenance for safe
   bulk use, and no implicit fallback to a repository's default ref.
+- Apply commit-boundary record/tree checks to metadata-only updates, reject
+  partial stored remote provenance, and require archive journal schema 2 without
+  automatic migration from earlier archive journal versions.
 - Add stable skill/deployment identities, explicit ownership and target records,
   orthogonal status fields, archive journals, guarded dead-owner lock recovery,
   and fail-closed malformed lock handling.

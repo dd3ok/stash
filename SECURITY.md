@@ -24,8 +24,9 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
   drifted previous tree during rollback, and recursively removes only an exact
   operation-owned path after journal authorization.
 - Remote managed provenance uses a canonical repository URL, caller-resolved
-  immutable revision, and exact case-sensitive repository-relative skill path.
-  Bulk update automation skips incomplete legacy provenance instead of guessing.
+  immutable revision, exact case-sensitive repository-relative skill path, and
+  exact `HEAD`, `refs/heads/...`, or `refs/tags/...` tracking ref. These four
+  fields are all present or all absent; partial stored provenance fails closed.
 - Deactivation requires matching Stash ownership, skill/deployment identity,
   target, and tree hash.
 - Catalog registration grants no write authority. Hash-matching related copies

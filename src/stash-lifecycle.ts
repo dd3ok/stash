@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 import type {
   CreateStashLifecycleOptions,
@@ -40,10 +41,16 @@ import {
 } from "./internal/lifecycle-host-policy.js";
 import {
   fingerprintTree,
-  isPortablePathSegment,
   TreeFingerprintError,
   type TreeFingerprintEntry,
 } from "./internal/tree-fingerprint.js";
+import {
+  canonicalImmutableRevision,
+  canonicalLifecycleSourceUrl,
+  canonicalRepositoryPath,
+  canonicalTrackingRef,
+  validStoredRemoteProvenance,
+} from "./internal/lifecycle-provenance.js";
 import {
   isPathInside,
   pathIdentity,
@@ -69,7 +76,7 @@ interface StoredSource {
 }
 
 interface ArchiveJournal {
-  schemaVersion: 1;
+  schemaVersion: 2;
   operationId: string;
   stage:
     | "started"
@@ -125,103 +132,6 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function canonicalLifecycleSourceUrl(value: string): string | undefined {
-  let parsed: URL;
-  try {
-    parsed = new URL(value.normalize("NFKC").trim());
-  } catch {
-    return undefined;
-  }
-  if (
-    !new Set(["https:", "http:", "ssh:", "git:", "git+https:", "git+ssh:"]).has(
-      parsed.protocol,
-    ) ||
-    (parsed.username &&
-      parsed.protocol !== "ssh:" &&
-      parsed.protocol !== "git+ssh:") ||
-    !parsed.hostname ||
-    parsed.hash ||
-    parsed.search ||
-    parsed.password
-  ) {
-    return undefined;
-  }
-  if (parsed.pathname.length > 1) {
-    parsed.pathname = parsed.pathname.replace(/\/+$/u, "");
-  }
-  if (parsed.pathname === "/" || parsed.pathname.length === 0) {
-    return undefined;
-  }
-  return parsed.href;
-}
-
-function canonicalRepositoryPath(value: string): string | undefined {
-  const candidate = value;
-  if (candidate === ".") {
-    return ".";
-  }
-  if (
-    candidate.length === 0 ||
-    candidate.startsWith("/") ||
-    /^[a-z]:\//iu.test(candidate)
-  ) {
-    return undefined;
-  }
-  const segments = candidate.split("/");
-  if (
-    segments.some(
-      (segment) =>
-        segment === "." ||
-        segment === ".." ||
-        !isPortablePathSegment(segment),
-    )
-  ) {
-    return undefined;
-  }
-  return segments.join("/");
-}
-
-function canonicalImmutableRevision(value: string): string | undefined {
-  const normalized = value.normalize("NFKC").trim();
-  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(normalized)
-    ? normalized.toLocaleLowerCase("und")
-    : undefined;
-}
-
-function canonicalTrackingRef(value: string): string | undefined {
-  const candidate = value;
-  if (candidate === "HEAD") {
-    return candidate;
-  }
-  if (
-    candidate.length > 1024 ||
-    !/^refs\/(?:heads|tags)\/.+$/u.test(candidate) ||
-    [...candidate].some(
-      (character) =>
-        character.charCodeAt(0) <= 0x20 ||
-        character.charCodeAt(0) === 0x7f ||
-        "~^:?*[\\".includes(character),
-    ) ||
-    candidate.includes("..") ||
-    candidate.includes("@{") ||
-    candidate.endsWith(".")
-  ) {
-    return undefined;
-  }
-  const segments = candidate.split("/");
-  if (
-    segments.some(
-      (segment) =>
-        segment.length === 0 ||
-        segment.startsWith(".") ||
-        segment.endsWith(".lock"),
-    )
-  ) {
-    return undefined;
-  }
-  return candidate;
 }
 
 function compatibilityState(value: unknown): VendorCompatibility["codex"] {
@@ -1054,7 +964,7 @@ class StashLifecycleImplementation implements StashLifecycle {
       "cleanup-authorized",
     ]);
     if (
-      journal.schemaVersion !== 1 ||
+      journal.schemaVersion !== 2 ||
       !/^[0-9a-f-]{36}$/iu.test(journal.operationId) ||
       !stages.has(journal.stage) ||
       !NAME_PATTERN.test(journal.name) ||
@@ -1418,16 +1328,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         typeof parsed.source.importedAt !== "string" ||
         (parsed.source.updatedAt !== undefined &&
           typeof parsed.source.updatedAt !== "string") ||
-        (parsed.source.url !== undefined &&
-          typeof parsed.source.url !== "string") ||
-        (parsed.source.revision !== undefined &&
-          typeof parsed.source.revision !== "string") ||
-        (parsed.source.repositoryPath !== undefined &&
-          typeof parsed.source.repositoryPath !== "string") ||
-        (parsed.source.trackingRef !== undefined &&
-          (typeof parsed.source.trackingRef !== "string" ||
-            canonicalTrackingRef(parsed.source.trackingRef) !==
-              parsed.source.trackingRef)) ||
+        !validStoredRemoteProvenance(parsed.source) ||
         !Array.isArray(parsed.deployments) ||
         parsed.deployments.some(
           (deployment) =>
@@ -1479,6 +1380,28 @@ class StashLifecycleImplementation implements StashLifecycle {
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
       throw error;
+    }
+  }
+
+  async #assertUpdateCommitBoundary(
+    record: ManagedSkillRecord,
+    managedPath: string,
+  ): Promise<void> {
+    const commitRecord = await this.#readRecord(record.name);
+    if (!commitRecord || !isDeepStrictEqual(commitRecord, record)) {
+      throw new StashError(
+        "managed-version-conflict",
+        `Managed metadata changed before the update for "${record.name}" could commit.`,
+        3,
+      );
+    }
+    const commitSnapshot = await snapshotTree(managedPath);
+    if (commitSnapshot.treeHash !== record.treeHash) {
+      throw new StashError(
+        "managed-drift",
+        `Managed skill "${record.name}" changed before its update could commit.`,
+        3,
+      );
     }
   }
 
@@ -1539,14 +1462,13 @@ class StashLifecycleImplementation implements StashLifecycle {
         2,
       );
     }
-    const canonicalRevision =
-      canonicalPath && requestedRevision
-        ? canonicalImmutableRevision(requestedRevision)
-        : requestedRevision;
-    if (canonicalPath && !canonicalRevision) {
+    const canonicalRevision = requestedRevision
+      ? canonicalImmutableRevision(requestedRevision)
+      : undefined;
+    if (requestedRevision && !canonicalRevision) {
       throw new StashError(
         "invalid-argument",
-        "--revision must be a full 40- or 64-hex Git commit object ID when --repository-path is recorded.",
+        "--revision must be a full 40- or 64-hex Git commit object ID when recording remote provenance.",
         2,
       );
     }
@@ -1821,69 +1743,14 @@ class StashLifecycleImplementation implements StashLifecycle {
         request.trackingRef,
       );
       const currentSourceUrl = record.source.url;
-      const canonicalCurrentSourceUrl = currentSourceUrl
-        ? canonicalLifecycleSourceUrl(currentSourceUrl)
-        : undefined;
-      if (currentSourceUrl && !canonicalCurrentSourceUrl) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed source URL is not a canonical repository URL for "${metadata.name}".`,
-          5,
-        );
-      }
       const currentRepositoryPath = record.source.repositoryPath;
-      const canonicalCurrentRepositoryPath = currentRepositoryPath
-        ? canonicalRepositoryPath(currentRepositoryPath)
-        : undefined;
-      if (currentRepositoryPath && !canonicalCurrentRepositoryPath) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed repository path is invalid for "${metadata.name}".`,
-          5,
-        );
-      }
       const currentTrackingRef = record.source.trackingRef;
-      const canonicalCurrentTrackingRef = currentTrackingRef
-        ? canonicalTrackingRef(currentTrackingRef)
-        : undefined;
-      if (currentTrackingRef && !canonicalCurrentTrackingRef) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed tracking ref is invalid for "${metadata.name}".`,
-          5,
-        );
-      }
-      if (
-        canonicalCurrentRepositoryPath &&
-        (!canonicalCurrentSourceUrl ||
-          !currentRevision ||
-          !canonicalImmutableRevision(currentRevision))
-      ) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed repository provenance is incomplete or mutable for "${metadata.name}".`,
-          5,
-        );
-      }
-      if (
-        canonicalCurrentTrackingRef &&
-        (!canonicalCurrentSourceUrl ||
-          !currentRevision ||
-          !canonicalImmutableRevision(currentRevision) ||
-          !canonicalCurrentRepositoryPath)
-      ) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed tracking provenance is incomplete for "${metadata.name}".`,
-          5,
-        );
-      }
       const requestedSourceUrl = requestedProvenance.sourceUrl;
       const requestedRevision = requestedProvenance.revision;
       const requestedRepositoryPath = requestedProvenance.repositoryPath;
       const requestedTrackingRef = requestedProvenance.trackingRef;
       if (
-        !canonicalCurrentSourceUrl &&
+        !currentSourceUrl &&
         (requestedSourceUrl ||
           requestedRevision ||
           requestedRepositoryPath ||
@@ -1900,23 +1767,9 @@ class StashLifecycleImplementation implements StashLifecycle {
         );
       }
       if (
-        canonicalCurrentSourceUrl &&
-        !canonicalCurrentTrackingRef &&
-        requestedTrackingRef &&
-        (!requestedSourceUrl ||
-          !requestedRevision ||
-          !requestedRepositoryPath)
-      ) {
-        throw new StashError(
-          "invalid-argument",
-          "Enriching legacy tracking provenance requires --source-url, --revision, --repository-path, and --tracking-ref together.",
-          2,
-        );
-      }
-      if (
         requestedSourceUrl &&
-        canonicalCurrentSourceUrl &&
-        requestedSourceUrl !== canonicalCurrentSourceUrl
+        currentSourceUrl &&
+        requestedSourceUrl !== currentSourceUrl
       ) {
         throw new StashError(
           "source-mismatch",
@@ -1926,8 +1779,8 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       if (
         requestedRepositoryPath &&
-        canonicalCurrentRepositoryPath &&
-        requestedRepositoryPath !== canonicalCurrentRepositoryPath
+        currentRepositoryPath &&
+        requestedRepositoryPath !== currentRepositoryPath
       ) {
         throw new StashError(
           "source-mismatch",
@@ -1937,8 +1790,8 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       if (
         requestedTrackingRef &&
-        canonicalCurrentTrackingRef &&
-        requestedTrackingRef !== canonicalCurrentTrackingRef
+        currentTrackingRef &&
+        requestedTrackingRef !== currentTrackingRef
       ) {
         throw new StashError(
           "source-mismatch",
@@ -1951,11 +1804,11 @@ class StashLifecycleImplementation implements StashLifecycle {
         (requestedRevision !== undefined &&
           requestedRevision !== currentRevision) ||
         (requestedRepositoryPath !== undefined &&
-          requestedRepositoryPath !== canonicalCurrentRepositoryPath) ||
+          requestedRepositoryPath !== currentRepositoryPath) ||
         (requestedTrackingRef !== undefined &&
-          requestedTrackingRef !== canonicalCurrentTrackingRef);
+          requestedTrackingRef !== currentTrackingRef);
       if (
-        canonicalCurrentSourceUrl &&
+        currentSourceUrl &&
         provenanceWillChange &&
         !requestedSourceUrl
       ) {
@@ -1965,8 +1818,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           2,
         );
       }
-      const effectiveSourceUrl =
-        requestedSourceUrl ?? canonicalCurrentSourceUrl;
+      const effectiveSourceUrl = requestedSourceUrl ?? currentSourceUrl;
       if (
         snapshot.treeHash !== record.treeHash &&
         (effectiveSourceUrl || currentRevision !== undefined) &&
@@ -1991,16 +1843,24 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       const effectiveRevision = requestedRevision ?? currentRevision;
       const effectiveRepositoryPath =
-        requestedRepositoryPath ?? canonicalCurrentRepositoryPath;
+        requestedRepositoryPath ?? currentRepositoryPath;
       const effectiveTrackingRef =
-        requestedTrackingRef ?? canonicalCurrentTrackingRef;
+        requestedTrackingRef ?? currentTrackingRef;
       if (
-        effectiveRepositoryPath &&
-        (!effectiveRevision || !canonicalImmutableRevision(effectiveRevision))
+        [
+          effectiveSourceUrl,
+          effectiveRevision,
+          effectiveRepositoryPath,
+          effectiveTrackingRef,
+        ].some((value) => value !== undefined) &&
+        (!effectiveSourceUrl ||
+          !effectiveRevision ||
+          !effectiveRepositoryPath ||
+          !effectiveTrackingRef)
       ) {
         throw new StashError(
           "invalid-argument",
-          "update requires a full 40- or 64-hex Git commit object ID for repository-path provenance.",
+          "update requires complete remote provenance: source URL, immutable revision, repository path, and tracking ref.",
           2,
         );
       }
@@ -2045,6 +1905,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         };
       };
       if (snapshot.treeHash === record.treeHash) {
+        await this.#assertUpdateCommitBoundary(record, managedPath);
         const sourceUrlChanged =
           requestedSourceUrl !== undefined &&
           requestedSourceUrl !== currentSourceUrl;
@@ -2053,10 +1914,10 @@ class StashLifecycleImplementation implements StashLifecycle {
           requestedRevision !== currentRevision;
         const repositoryPathChanged =
           requestedRepositoryPath !== undefined &&
-          requestedRepositoryPath !== canonicalCurrentRepositoryPath;
+          requestedRepositoryPath !== currentRepositoryPath;
         const trackingRefChanged =
           requestedTrackingRef !== undefined &&
-          requestedTrackingRef !== canonicalCurrentTrackingRef;
+          requestedTrackingRef !== currentTrackingRef;
         if (
           !sourceUrlChanged &&
           !revisionChanged &&
@@ -2112,30 +1973,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           );
         }
         await this.#advanceJournal(journal, "stage-ready");
-        const commitRecord = await this.#readRecord(metadata.name);
-        if (
-          !commitRecord ||
-          commitRecord.skillId !== record.skillId ||
-          commitRecord.treeHash !== record.treeHash ||
-          commitRecord.source.revision !== currentRevision ||
-          commitRecord.source.url !== currentSourceUrl ||
-          commitRecord.source.repositoryPath !== currentRepositoryPath ||
-          commitRecord.source.trackingRef !== currentTrackingRef
-        ) {
-          throw new StashError(
-            "managed-version-conflict",
-            `Managed metadata changed while staging "${metadata.name}".`,
-            3,
-          );
-        }
-        const commitSnapshot = await snapshotTree(managedPath);
-        if (commitSnapshot.treeHash !== record.treeHash) {
-          throw new StashError(
-            "managed-drift",
-            `Managed skill "${metadata.name}" changed while its update was staged.`,
-            3,
-          );
-        }
+        await this.#assertUpdateCommitBoundary(record, managedPath);
         await rename(managedPath, backupPath);
         const backupSnapshot = await snapshotTree(backupPath);
         if (backupSnapshot.treeHash !== record.treeHash) {
@@ -2295,7 +2133,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         `.stash-archive-${metadata.name}-${operationId}`,
       );
       const journal: ArchiveJournal = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         stage: "started",
         source,

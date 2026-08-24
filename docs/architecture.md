@@ -173,11 +173,12 @@ Update uses caller-observed state as a compare-and-swap boundary:
 ```text
 explicit local skill + expected tree/revision → verify current managed state
   → verify canonical URL + immutable revision + exact repository path/ref
-  → journal-owned staging → snapshot + re-hash staging
-  → commit-time record/tree compare-and-swap
-  → same tree: metadata-only record advance
-  → changed tree: journal → managed-to-backup → staging-to-managed
-  → provenance record commit → verified rename to authorized discard → cleanup
+  → same tree: commit-time record/tree compare-and-swap
+    → metadata-only record advance
+  → changed tree: journal-owned staging → snapshot + re-hash staging
+    → commit-time record/tree compare-and-swap
+    → managed-to-backup → staging-to-managed
+    → provenance record commit → verified rename to authorized discard → cleanup
 ```
 
 An interrupted changed-tree update either restores the backup before record
@@ -203,6 +204,9 @@ without overwriting an occupied path or finishes committed cleanup. Lock
 ownership is atomically published as a complete directory record. A proven-dead
 PID is reclaimed under a separate atomic guard; malformed or live ownership
 fails closed and is never removed based on age alone.
+
+Archive journals use schema 2. Other archive journal versions are unsupported
+and fail closed; recovery does not attempt an automatic migration.
 
 The managed root, `.stash`, records, staging, and journal roots must all be real
 directories whose resolved paths remain inside the managed root. Journals and

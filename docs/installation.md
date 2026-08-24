@@ -34,13 +34,14 @@ Record the canonical repository URL, caller-resolved full 40- or 64-hex Git
 commit object ID, and
 exact repository-relative skill path; use `.` for a skill at repository root.
 Also record `HEAD` or the fully qualified `refs/heads/...` or `refs/tags/...`
-lineage. Bulk updates resolve only that exact ref and skip legacy records that
-do not have it instead of guessing the remote default branch.
-Updating follows the same staging rule and requires compare-and-swap values from
-`stash status --json`. It changes only the managed canonical copy; tracked host
-deployments remain untouched and report whether they still match that copy.
-All-managed automation skips legacy records without complete repository
-provenance instead of searching by skill name.
+lineage. Bulk updates resolve only that exact ref. Records with no remote
+provenance are local-only and skipped; partial remote provenance is invalid and
+stops lifecycle processing instead of guessing the remote default branch.
+Changed-tree updates follow the same staging rule. Every update requires
+compare-and-swap values from `stash status --json` and rechecks the record and
+tree at its commit boundary. It changes only the managed canonical copy; tracked
+host deployments remain untouched and report whether they still match that copy.
+All-managed automation never searches by skill name to reconstruct provenance.
 Lifecycle deployment is standalone-only: plugins and vendor enable/disable
 settings stay under their host's controls.
 

@@ -11,6 +11,7 @@ import type {
   RelatedSkillCopy,
   SkillRecord,
 } from "../types.js";
+import { validStoredRemoteProvenance } from "./lifecycle-provenance.js";
 import { fingerprintTree } from "./tree-fingerprint.js";
 import { isPathInside, pathIdentity, sha256 } from "./util.js";
 
@@ -43,14 +44,7 @@ function validRecord(
     typeof record.source.location === "string" &&
     path.isAbsolute(record.source.location) &&
     typeof record.source.importedAt === "string" &&
-    (record.source.url === undefined ||
-      typeof record.source.url === "string") &&
-    (record.source.revision === undefined ||
-      typeof record.source.revision === "string") &&
-    (record.source.repositoryPath === undefined ||
-      typeof record.source.repositoryPath === "string") &&
-    (record.source.trackingRef === undefined ||
-      typeof record.source.trackingRef === "string") &&
+    validStoredRemoteProvenance(record.source) &&
     Array.isArray(record.deployments) &&
     record.deployments.every(
       (deployment) =>

@@ -76,12 +76,13 @@ case-sensitive `--repository-path` (`.` means repository root), plus an exact
 `--tracking-ref` of `HEAD`, `refs/heads/...`, or `refs/tags/...`. A content,
 revision, path, or tracking-ref change against recorded remote provenance
 requires the recorded source URL. Changed remote content must use a new
-revision. A
-mismatched tree or revision is a compare-and-swap conflict; a different URL or
-recorded repository path or tracking ref is a provenance conflict. Legacy
-records without a repository path or tracking ref remain usable for explicit
-single-skill operations but must be skipped by all-managed automation rather
-than guessed.
+revision. A mismatched tree or revision is a compare-and-swap conflict; a
+different URL or recorded repository path or tracking ref is a provenance
+conflict. Stored
+remote provenance is valid only when all four fields are present and canonical.
+A partial remote record is rejected by lifecycle and managed-projection reads;
+automation must stop rather than guess, enrich, or bypass it. A record with all
+four fields absent is local-only and may be skipped by all-managed automation.
 Introducing a remote URL on a record that had none requires URL, full commit
 object ID, repository path, and tracking ref together.
 New `install` and standalone `archive` records likewise accept remote
@@ -99,6 +100,9 @@ only after the journal authorizes the exact operation-owned discard path. Any
 other missing, linked, unexpected, or hash-mismatched path fails closed. This
 handles interrupted processes; the CLI does not promise fsync-backed power-loss
 durability.
+
+Archive recovery accepts archive journal schema 2 only. Other archive journal
+versions fail closed and are not migrated automatically.
 
 When default resolution includes the managed catalog, `relatedCopies` lists
 hash-matching preserved sources and Stash-owned deployments that were folded

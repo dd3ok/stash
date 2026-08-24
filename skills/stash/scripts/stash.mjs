@@ -8580,13 +8580,95 @@ async function fingerprintTree(sourceRoot, capturePaths = /* @__PURE__ */ new Se
   };
 }
 
+// src/internal/lifecycle-provenance.ts
+var SUPPORTED_REPOSITORY_PROTOCOLS = /* @__PURE__ */ new Set([
+  "https:",
+  "http:",
+  "ssh:",
+  "git:",
+  "git+https:",
+  "git+ssh:"
+]);
+function canonicalLifecycleSourceUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value.normalize("NFKC").trim());
+  } catch {
+    return void 0;
+  }
+  if (!SUPPORTED_REPOSITORY_PROTOCOLS.has(parsed.protocol) || parsed.username && parsed.protocol !== "ssh:" && parsed.protocol !== "git+ssh:" || !parsed.hostname || parsed.hash || parsed.search || parsed.password) {
+    return void 0;
+  }
+  if (parsed.pathname.length > 1) {
+    parsed.pathname = parsed.pathname.replace(/\/+$/u, "");
+  }
+  if (parsed.pathname === "/" || parsed.pathname.length === 0) {
+    return void 0;
+  }
+  return parsed.href;
+}
+function canonicalRepositoryPath(value) {
+  const candidate = value;
+  if (candidate === ".") {
+    return ".";
+  }
+  if (candidate.length === 0 || candidate.startsWith("/") || /^[a-z]:\//iu.test(candidate)) {
+    return void 0;
+  }
+  const segments = candidate.split("/");
+  if (segments.some(
+    (segment) => segment === "." || segment === ".." || !isPortablePathSegment(segment)
+  )) {
+    return void 0;
+  }
+  return segments.join("/");
+}
+function canonicalImmutableRevision(value) {
+  const normalized = value.normalize("NFKC").trim();
+  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(normalized) ? normalized.toLocaleLowerCase("und") : void 0;
+}
+function canonicalTrackingRef(value) {
+  const candidate = value;
+  if (candidate === "HEAD") {
+    return candidate;
+  }
+  if (candidate.length > 1024 || !/^refs\/(?:heads|tags)\/.+$/u.test(candidate) || [...candidate].some(
+    (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127 || "~^:?*[\\".includes(character)
+  ) || candidate.includes("..") || candidate.includes("@{") || candidate.endsWith(".")) {
+    return void 0;
+  }
+  const segments = candidate.split("/");
+  if (segments.some(
+    (segment) => segment.length === 0 || segment.startsWith(".") || segment.endsWith(".lock")
+  )) {
+    return void 0;
+  }
+  return candidate;
+}
+function validStoredRemoteProvenance(source) {
+  const values = [
+    source.url,
+    source.revision,
+    source.repositoryPath,
+    source.trackingRef
+  ];
+  if (values.every((value) => value === void 0)) {
+    return true;
+  }
+  if (!values.every((value) => typeof value === "string")) {
+    return false;
+  }
+  const [url, revision, repositoryPath, trackingRef] = values;
+  return canonicalLifecycleSourceUrl(url) === url && canonicalImmutableRevision(revision) === revision && canonicalRepositoryPath(repositoryPath) === repositoryPath && canonicalTrackingRef(trackingRef) === trackingRef;
+}
+
 // src/internal/managed-projection.ts
 function validRecord(value, expectedName) {
   if (!value || typeof value !== "object") {
     return false;
   }
   const record = value;
-  return record.schemaVersion === 1 && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === expectedName && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) && /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) && record.source !== null && typeof record.source === "object" && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path5.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && (record.source.url === void 0 || typeof record.source.url === "string") && (record.source.revision === void 0 || typeof record.source.revision === "string") && (record.source.repositoryPath === void 0 || typeof record.source.repositoryPath === "string") && (record.source.trackingRef === void 0 || typeof record.source.trackingRef === "string") && Array.isArray(record.deployments) && record.deployments.every(
+  return record.schemaVersion === 1 && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === expectedName && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) && /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) && record.source !== null && typeof record.source === "object" && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path5.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
     (deployment) => deployment !== null && typeof deployment === "object" && typeof deployment.deploymentId === "string" && deployment.deploymentId.length > 0 && deployment.skillId === record.skillId && (deployment.host === "codex" || deployment.host === "claude-code" || deployment.host === "antigravity-ide") && (deployment.scope === "user" || deployment.scope === "workspace") && deployment.method === "copy" && deployment.ownership === "stash" && typeof deployment.root === "string" && path5.isAbsolute(deployment.root) && typeof deployment.path === "string" && path5.isAbsolute(deployment.path) && pathIdentity(deployment.path) === pathIdentity(path5.join(deployment.root, record.name)) && deployment.targetId === `${deployment.host}:${deployment.scope}:${pathIdentity(deployment.root)}` && /^sha256:[0-9a-f]{64}$/u.test(deployment.treeHash) && typeof deployment.deployedAt === "string"
   );
 }
@@ -9654,6 +9736,7 @@ import {
 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
 import path8 from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 // src/internal/lifecycle-host-policy.ts
 import { homedir as homedir2 } from "node:os";
@@ -9707,64 +9790,6 @@ var NAME_PATTERN2 = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 var STORE_SCHEMA_VERSION = 1;
 function asObject3(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-function canonicalLifecycleSourceUrl(value) {
-  let parsed;
-  try {
-    parsed = new URL(value.normalize("NFKC").trim());
-  } catch {
-    return void 0;
-  }
-  if (!(/* @__PURE__ */ new Set(["https:", "http:", "ssh:", "git:", "git+https:", "git+ssh:"])).has(
-    parsed.protocol
-  ) || parsed.username && parsed.protocol !== "ssh:" && parsed.protocol !== "git+ssh:" || !parsed.hostname || parsed.hash || parsed.search || parsed.password) {
-    return void 0;
-  }
-  if (parsed.pathname.length > 1) {
-    parsed.pathname = parsed.pathname.replace(/\/+$/u, "");
-  }
-  if (parsed.pathname === "/" || parsed.pathname.length === 0) {
-    return void 0;
-  }
-  return parsed.href;
-}
-function canonicalRepositoryPath(value) {
-  const candidate = value;
-  if (candidate === ".") {
-    return ".";
-  }
-  if (candidate.length === 0 || candidate.startsWith("/") || /^[a-z]:\//iu.test(candidate)) {
-    return void 0;
-  }
-  const segments = candidate.split("/");
-  if (segments.some(
-    (segment) => segment === "." || segment === ".." || !isPortablePathSegment(segment)
-  )) {
-    return void 0;
-  }
-  return segments.join("/");
-}
-function canonicalImmutableRevision(value) {
-  const normalized = value.normalize("NFKC").trim();
-  return /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/iu.test(normalized) ? normalized.toLocaleLowerCase("und") : void 0;
-}
-function canonicalTrackingRef(value) {
-  const candidate = value;
-  if (candidate === "HEAD") {
-    return candidate;
-  }
-  if (candidate.length > 1024 || !/^refs\/(?:heads|tags)\/.+$/u.test(candidate) || [...candidate].some(
-    (character) => character.charCodeAt(0) <= 32 || character.charCodeAt(0) === 127 || "~^:?*[\\".includes(character)
-  ) || candidate.includes("..") || candidate.includes("@{") || candidate.endsWith(".")) {
-    return void 0;
-  }
-  const segments = candidate.split("/");
-  if (segments.some(
-    (segment) => segment.length === 0 || segment.startsWith(".") || segment.endsWith(".lock")
-  )) {
-    return void 0;
-  }
-  return candidate;
 }
 function compatibilityState2(value) {
   return value === "supported" || value === "partial" || value === "unsupported" || value === "unknown" ? value : "unknown";
@@ -10456,7 +10481,7 @@ var StashLifecycleImplementation = class {
       "archive-committed",
       "cleanup-authorized"
     ]);
-    if (journal.schemaVersion !== 1 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path8.isAbsolute(journal.source) || !path8.isAbsolute(journal.tombstone) || !path8.isAbsolute(journal.managedPath)) {
+    if (journal.schemaVersion !== 2 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path8.isAbsolute(journal.source) || !path8.isAbsolute(journal.tombstone) || !path8.isAbsolute(journal.managedPath)) {
       throw new StashError(
         "invalid-lifecycle-journal",
         `Invalid or unsafe lifecycle journal "${journalPath}".`,
@@ -10756,7 +10781,7 @@ var StashLifecycleImplementation = class {
         throw new Error("lifecycle record is not a real file");
       }
       const parsed = JSON.parse(await readFile6(recordPath, "utf8"));
-      if (parsed.schemaVersion !== STORE_SCHEMA_VERSION || typeof parsed.skillId !== "string" || parsed.skillId.length === 0 || parsed.name !== name || !/^sha256:[0-9a-f]{64}$/iu.test(parsed.treeHash) || !parsed.source || parsed.source.kind !== "local-import" && parsed.source.kind !== "standalone-archive" || typeof parsed.source.location !== "string" || !path8.isAbsolute(parsed.source.location) || typeof parsed.source.importedAt !== "string" || parsed.source.updatedAt !== void 0 && typeof parsed.source.updatedAt !== "string" || parsed.source.url !== void 0 && typeof parsed.source.url !== "string" || parsed.source.revision !== void 0 && typeof parsed.source.revision !== "string" || parsed.source.repositoryPath !== void 0 && typeof parsed.source.repositoryPath !== "string" || parsed.source.trackingRef !== void 0 && (typeof parsed.source.trackingRef !== "string" || canonicalTrackingRef(parsed.source.trackingRef) !== parsed.source.trackingRef) || !Array.isArray(parsed.deployments) || parsed.deployments.some(
+      if (parsed.schemaVersion !== STORE_SCHEMA_VERSION || typeof parsed.skillId !== "string" || parsed.skillId.length === 0 || parsed.name !== name || !/^sha256:[0-9a-f]{64}$/iu.test(parsed.treeHash) || !parsed.source || parsed.source.kind !== "local-import" && parsed.source.kind !== "standalone-archive" || typeof parsed.source.location !== "string" || !path8.isAbsolute(parsed.source.location) || typeof parsed.source.importedAt !== "string" || parsed.source.updatedAt !== void 0 && typeof parsed.source.updatedAt !== "string" || !validStoredRemoteProvenance(parsed.source) || !Array.isArray(parsed.deployments) || parsed.deployments.some(
         (deployment) => typeof deployment.deploymentId !== "string" || deployment.skillId !== parsed.skillId || typeof deployment.targetId !== "string" || deployment.targetId !== targetIdentity(deployment) || deployment.ownership !== "stash" || !samePath(deployment.path, path8.join(deployment.root, parsed.name))
       )) {
         throw new Error("invalid lifecycle record shape");
@@ -10795,6 +10820,24 @@ var StashLifecycleImplementation = class {
     } catch (error) {
       await unlink2(temporaryPath).catch(() => void 0);
       throw error;
+    }
+  }
+  async #assertUpdateCommitBoundary(record, managedPath) {
+    const commitRecord = await this.#readRecord(record.name);
+    if (!commitRecord || !isDeepStrictEqual(commitRecord, record)) {
+      throw new StashError(
+        "managed-version-conflict",
+        `Managed metadata changed before the update for "${record.name}" could commit.`,
+        3
+      );
+    }
+    const commitSnapshot = await snapshotTree(managedPath);
+    if (commitSnapshot.treeHash !== record.treeHash) {
+      throw new StashError(
+        "managed-drift",
+        `Managed skill "${record.name}" changed before its update could commit.`,
+        3
+      );
     }
   }
   async #assertSourceBoundary(source) {
@@ -10836,11 +10879,11 @@ var StashLifecycleImplementation = class {
         2
       );
     }
-    const canonicalRevision = canonicalPath && requestedRevision ? canonicalImmutableRevision(requestedRevision) : requestedRevision;
-    if (canonicalPath && !canonicalRevision) {
+    const canonicalRevision = requestedRevision ? canonicalImmutableRevision(requestedRevision) : void 0;
+    if (requestedRevision && !canonicalRevision) {
       throw new StashError(
         "invalid-argument",
-        "--revision must be a full 40- or 64-hex Git commit object ID when --repository-path is recorded.",
+        "--revision must be a full 40- or 64-hex Git commit object ID when recording remote provenance.",
         2
       );
     }
@@ -11075,94 +11118,49 @@ var StashLifecycleImplementation = class {
         request.trackingRef
       );
       const currentSourceUrl = record.source.url;
-      const canonicalCurrentSourceUrl = currentSourceUrl ? canonicalLifecycleSourceUrl(currentSourceUrl) : void 0;
-      if (currentSourceUrl && !canonicalCurrentSourceUrl) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed source URL is not a canonical repository URL for "${metadata.name}".`,
-          5
-        );
-      }
       const currentRepositoryPath = record.source.repositoryPath;
-      const canonicalCurrentRepositoryPath = currentRepositoryPath ? canonicalRepositoryPath(currentRepositoryPath) : void 0;
-      if (currentRepositoryPath && !canonicalCurrentRepositoryPath) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed repository path is invalid for "${metadata.name}".`,
-          5
-        );
-      }
       const currentTrackingRef = record.source.trackingRef;
-      const canonicalCurrentTrackingRef = currentTrackingRef ? canonicalTrackingRef(currentTrackingRef) : void 0;
-      if (currentTrackingRef && !canonicalCurrentTrackingRef) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed tracking ref is invalid for "${metadata.name}".`,
-          5
-        );
-      }
-      if (canonicalCurrentRepositoryPath && (!canonicalCurrentSourceUrl || !currentRevision || !canonicalImmutableRevision(currentRevision))) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed repository provenance is incomplete or mutable for "${metadata.name}".`,
-          5
-        );
-      }
-      if (canonicalCurrentTrackingRef && (!canonicalCurrentSourceUrl || !currentRevision || !canonicalImmutableRevision(currentRevision) || !canonicalCurrentRepositoryPath)) {
-        throw new StashError(
-          "invalid-lifecycle-record",
-          `Managed tracking provenance is incomplete for "${metadata.name}".`,
-          5
-        );
-      }
       const requestedSourceUrl = requestedProvenance.sourceUrl;
       const requestedRevision = requestedProvenance.revision;
       const requestedRepositoryPath = requestedProvenance.repositoryPath;
       const requestedTrackingRef = requestedProvenance.trackingRef;
-      if (!canonicalCurrentSourceUrl && (requestedSourceUrl || requestedRevision || requestedRepositoryPath || requestedTrackingRef) && (!requestedSourceUrl || !requestedRevision || !requestedRepositoryPath || !requestedTrackingRef)) {
+      if (!currentSourceUrl && (requestedSourceUrl || requestedRevision || requestedRepositoryPath || requestedTrackingRef) && (!requestedSourceUrl || !requestedRevision || !requestedRepositoryPath || !requestedTrackingRef)) {
         throw new StashError(
           "invalid-argument",
           "Introducing remote provenance requires --source-url, a full immutable --revision, --repository-path, and --tracking-ref together.",
           2
         );
       }
-      if (canonicalCurrentSourceUrl && !canonicalCurrentTrackingRef && requestedTrackingRef && (!requestedSourceUrl || !requestedRevision || !requestedRepositoryPath)) {
-        throw new StashError(
-          "invalid-argument",
-          "Enriching legacy tracking provenance requires --source-url, --revision, --repository-path, and --tracking-ref together.",
-          2
-        );
-      }
-      if (requestedSourceUrl && canonicalCurrentSourceUrl && requestedSourceUrl !== canonicalCurrentSourceUrl) {
+      if (requestedSourceUrl && currentSourceUrl && requestedSourceUrl !== currentSourceUrl) {
         throw new StashError(
           "source-mismatch",
           `Update source URL does not match the managed provenance for "${metadata.name}".`,
           3
         );
       }
-      if (requestedRepositoryPath && canonicalCurrentRepositoryPath && requestedRepositoryPath !== canonicalCurrentRepositoryPath) {
+      if (requestedRepositoryPath && currentRepositoryPath && requestedRepositoryPath !== currentRepositoryPath) {
         throw new StashError(
           "source-mismatch",
           `Update repository path does not match the managed provenance for "${metadata.name}".`,
           3
         );
       }
-      if (requestedTrackingRef && canonicalCurrentTrackingRef && requestedTrackingRef !== canonicalCurrentTrackingRef) {
+      if (requestedTrackingRef && currentTrackingRef && requestedTrackingRef !== currentTrackingRef) {
         throw new StashError(
           "source-mismatch",
           `Update tracking ref does not match the managed provenance for "${metadata.name}".`,
           3
         );
       }
-      const provenanceWillChange = snapshot.treeHash !== record.treeHash || requestedRevision !== void 0 && requestedRevision !== currentRevision || requestedRepositoryPath !== void 0 && requestedRepositoryPath !== canonicalCurrentRepositoryPath || requestedTrackingRef !== void 0 && requestedTrackingRef !== canonicalCurrentTrackingRef;
-      if (canonicalCurrentSourceUrl && provenanceWillChange && !requestedSourceUrl) {
+      const provenanceWillChange = snapshot.treeHash !== record.treeHash || requestedRevision !== void 0 && requestedRevision !== currentRevision || requestedRepositoryPath !== void 0 && requestedRepositoryPath !== currentRepositoryPath || requestedTrackingRef !== void 0 && requestedTrackingRef !== currentTrackingRef;
+      if (currentSourceUrl && provenanceWillChange && !requestedSourceUrl) {
         throw new StashError(
           "invalid-argument",
           "update requires --source-url when changing content, revision, repository path, or tracking ref with recorded remote provenance.",
           2
         );
       }
-      const effectiveSourceUrl = requestedSourceUrl ?? canonicalCurrentSourceUrl;
+      const effectiveSourceUrl = requestedSourceUrl ?? currentSourceUrl;
       if (snapshot.treeHash !== record.treeHash && (effectiveSourceUrl || currentRevision !== void 0) && !requestedRevision) {
         throw new StashError(
           "invalid-argument",
@@ -11178,12 +11176,17 @@ var StashLifecycleImplementation = class {
         );
       }
       const effectiveRevision = requestedRevision ?? currentRevision;
-      const effectiveRepositoryPath = requestedRepositoryPath ?? canonicalCurrentRepositoryPath;
-      const effectiveTrackingRef = requestedTrackingRef ?? canonicalCurrentTrackingRef;
-      if (effectiveRepositoryPath && (!effectiveRevision || !canonicalImmutableRevision(effectiveRevision))) {
+      const effectiveRepositoryPath = requestedRepositoryPath ?? currentRepositoryPath;
+      const effectiveTrackingRef = requestedTrackingRef ?? currentTrackingRef;
+      if ([
+        effectiveSourceUrl,
+        effectiveRevision,
+        effectiveRepositoryPath,
+        effectiveTrackingRef
+      ].some((value) => value !== void 0) && (!effectiveSourceUrl || !effectiveRevision || !effectiveRepositoryPath || !effectiveTrackingRef)) {
         throw new StashError(
           "invalid-argument",
-          "update requires a full 40- or 64-hex Git commit object ID for repository-path provenance.",
+          "update requires complete remote provenance: source URL, immutable revision, repository path, and tracking ref.",
           2
         );
       }
@@ -11223,10 +11226,11 @@ var StashLifecycleImplementation = class {
         };
       };
       if (snapshot.treeHash === record.treeHash) {
+        await this.#assertUpdateCommitBoundary(record, managedPath);
         const sourceUrlChanged = requestedSourceUrl !== void 0 && requestedSourceUrl !== currentSourceUrl;
         const revisionChanged = requestedRevision !== void 0 && requestedRevision !== currentRevision;
-        const repositoryPathChanged = requestedRepositoryPath !== void 0 && requestedRepositoryPath !== canonicalCurrentRepositoryPath;
-        const trackingRefChanged = requestedTrackingRef !== void 0 && requestedTrackingRef !== canonicalCurrentTrackingRef;
+        const repositoryPathChanged = requestedRepositoryPath !== void 0 && requestedRepositoryPath !== currentRepositoryPath;
+        const trackingRefChanged = requestedTrackingRef !== void 0 && requestedTrackingRef !== currentTrackingRef;
         if (!sourceUrlChanged && !revisionChanged && !repositoryPathChanged && !trackingRefChanged) {
           return resultFor("already-current");
         }
@@ -11276,22 +11280,7 @@ var StashLifecycleImplementation = class {
           );
         }
         await this.#advanceJournal(journal, "stage-ready");
-        const commitRecord = await this.#readRecord(metadata.name);
-        if (!commitRecord || commitRecord.skillId !== record.skillId || commitRecord.treeHash !== record.treeHash || commitRecord.source.revision !== currentRevision || commitRecord.source.url !== currentSourceUrl || commitRecord.source.repositoryPath !== currentRepositoryPath || commitRecord.source.trackingRef !== currentTrackingRef) {
-          throw new StashError(
-            "managed-version-conflict",
-            `Managed metadata changed while staging "${metadata.name}".`,
-            3
-          );
-        }
-        const commitSnapshot = await snapshotTree(managedPath);
-        if (commitSnapshot.treeHash !== record.treeHash) {
-          throw new StashError(
-            "managed-drift",
-            `Managed skill "${metadata.name}" changed while its update was staged.`,
-            3
-          );
-        }
+        await this.#assertUpdateCommitBoundary(record, managedPath);
         await rename2(managedPath, backupPath);
         const backupSnapshot = await snapshotTree(backupPath);
         if (backupSnapshot.treeHash !== record.treeHash) {
@@ -11435,7 +11424,7 @@ var StashLifecycleImplementation = class {
         `.stash-archive-${metadata.name}-${operationId}`
       );
       const journal = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         stage: "started",
         source,

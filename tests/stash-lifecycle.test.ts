@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
 import {
   access,
   mkdtemp,
@@ -286,40 +287,31 @@ test("update enforces provenance CAS and avoids copying an unchanged tree", asyn
   assert.equal(alreadyCurrent.status, "already-current");
 });
 
-test("repository provenance is canonical, path-exact, and explicitly enrichable", async () => {
+test("repository provenance is canonical, immutable, and path-exact", async () => {
   const fixture = await lifecycleFixture();
   const sourceUrl = "https://github.com/Example/rare-skills/";
+  const previousRevision = "a".repeat(40);
   const immutableRevision = "b".repeat(40);
   const lifecycle = await createStashLifecycle({
     catalogs: [],
     managedRoot: fixture.managedRoot,
     lifecycleHome: path.join(fixture.base, "home"),
   });
-  const installed = await lifecycle.install({ source: fixture.sourceRoot });
-  const recordPath = path.join(
-    fixture.managedRoot,
-    ".stash",
-    "records",
-    "rare-skill.json",
-  );
-  const legacyRecord = JSON.parse(await readFile(recordPath, "utf8"));
-  legacyRecord.source.url = sourceUrl;
-  legacyRecord.source.revision = immutableRevision;
-  await writeFile(
-    recordPath,
-    `${JSON.stringify(legacyRecord, null, 2)}\n`,
-    "utf8",
-  );
-  const enriched = await lifecycle.update({
+  const installed = await lifecycle.install({
     source: fixture.sourceRoot,
-    expectedTreeHash: installed.treeHash,
-    expectedRevision: immutableRevision,
-    sourceUrl: "https://github.com/Example/rare-skills",
-    revision: immutableRevision,
+    sourceUrl,
+    revision: previousRevision,
     repositoryPath: "skills/rare-skill",
     trackingRef: "refs/tags/v1.0.0",
   });
-  assert.equal(enriched.status, "metadata-updated");
+  const updated = await lifecycle.update({
+    source: fixture.sourceRoot,
+    expectedTreeHash: installed.treeHash,
+    expectedRevision: previousRevision,
+    sourceUrl: "https://github.com/Example/rare-skills",
+    revision: immutableRevision,
+  });
+  assert.equal(updated.status, "metadata-updated");
   const status = await lifecycle.status({ name: "rare-skill" });
   assert.equal(
     status.skills[0]?.source.url,
@@ -527,6 +519,79 @@ test("repository provenance is canonical, path-exact, and explicitly enrichable"
   });
   const unicodeStatus = await lifecycle.status({ name: "unicode-ref-skill" });
   assert.equal(unicodeStatus.skills[0]?.source.trackingRef, "refs/heads/K");
+});
+
+test("metadata-only updates recheck record and tree state at the commit boundary", async () => {
+  for (const race of ["record", "tree"] as const) {
+    const fixture = await lifecycleFixture();
+    const sourceUrl = "https://example.com/repository";
+    const previousRevision = "a".repeat(40);
+    const requestedRevision = "b".repeat(40);
+    const externalRevision = "c".repeat(40);
+    let armed = false;
+    let callsAfterArming = 0;
+    let recordPath = "";
+    let managedPath = "";
+    const lifecycle = await createStashLifecycle({
+      catalogs: [],
+      managedRoot: fixture.managedRoot,
+      lifecycleHome: path.join(fixture.base, "home"),
+      now: () => {
+        if (armed && ++callsAfterArming === 2) {
+          if (race === "record") {
+            const record = JSON.parse(readFileSync(recordPath, "utf8"));
+            record.source.revision = externalRevision;
+            writeFileSync(
+              recordPath,
+              `${JSON.stringify(record, null, 2)}\n`,
+              "utf8",
+            );
+          } else {
+            writeFileSync(
+              path.join(managedPath, "references", "guide.md"),
+              "external tree change\n",
+              "utf8",
+            );
+          }
+        }
+        return Date.now();
+      },
+    });
+    const installed = await lifecycle.install({
+      source: fixture.sourceRoot,
+      sourceUrl,
+      revision: previousRevision,
+      repositoryPath: "skills/rare-skill",
+      trackingRef: "refs/heads/main",
+    });
+    recordPath = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "records",
+      "rare-skill.json",
+    );
+    managedPath = installed.managedPath;
+    armed = true;
+
+    await assert.rejects(
+      lifecycle.update({
+        source: fixture.sourceRoot,
+        expectedTreeHash: installed.treeHash,
+        expectedRevision: previousRevision,
+        sourceUrl,
+        revision: requestedRevision,
+      }),
+      (error: unknown) =>
+        error instanceof StashError &&
+        error.code ===
+          (race === "record" ? "managed-version-conflict" : "managed-drift"),
+    );
+
+    if (race === "record") {
+      const persisted = JSON.parse(await readFile(recordPath, "utf8"));
+      assert.equal(persisted.source.revision, externalRevision);
+    }
+  }
 });
 
 test("update preserves tracked deployments and reports them as outdated", async () => {
@@ -1019,7 +1084,7 @@ test("a configured host catalog supports archive to activate round trips", async
   assert.equal(scoped.matches[0]?.catalogId, "host");
 });
 
-test("managed projection rejects a malformed record before folding any copy", async () => {
+test("incomplete remote provenance invalidates lifecycle and managed projection records", async () => {
   const fixture = await lifecycleFixture();
   const catalogRoot = path.dirname(fixture.sourceRoot);
   const registration = {
@@ -1041,12 +1106,18 @@ test("managed projection rejects a malformed record before folding any copy", as
     "records",
     "rare-skill.json",
   );
-  const record = JSON.parse(await readFile(recordPath, "utf8")) as Record<
-    string,
-    unknown
-  >;
-  record.deployments = [null];
+  const record = JSON.parse(
+    await readFile(recordPath, "utf8"),
+  ) as ManagedSkillRecord;
+  record.source.url = "https://example.com/repository";
+  record.source.revision = "a".repeat(40);
   await writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+
+  await assert.rejects(
+    lifecycle.status({ name: "rare-skill" }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "invalid-lifecycle-record",
+  );
 
   const catalog = await createStashCatalog({
     catalogs: [registration],
@@ -1061,6 +1132,54 @@ test("managed projection rejects a malformed record before folding any copy", as
       (warning) => warning.code === "invalid-lifecycle-record",
     ),
   );
+});
+
+test("archive recovery rejects unsupported journal schemas", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const operationId = "00000000-0000-4000-8000-000000000018";
+  const journalPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "journal",
+    `${operationId}.json`,
+  );
+  await writeFile(
+    journalPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        operationId,
+        stage: "started",
+        source: fixture.sourceRoot,
+        tombstone: path.join(
+          fixture.base,
+          `.stash-archive-rare-skill-${operationId}`,
+        ),
+        name: "rare-skill",
+        treeHash: installed.treeHash,
+        managedPath: installed.managedPath,
+        managedExistedBefore: true,
+        createdAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  await assert.rejects(
+    lifecycle.install({ source: fixture.sourceRoot }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "invalid-lifecycle-journal",
+  );
+  await access(journalPath);
+  await access(path.join(fixture.sourceRoot, "SKILL.md"));
 });
 
 test("the next mutation deterministically restores an interrupted archive", async () => {
@@ -1087,7 +1206,7 @@ test("the next mutation deterministically restores an interrupted archive", asyn
     journalPath,
     `${JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         stage: "source-tombstoned",
         source: fixture.sourceRoot,
@@ -1143,7 +1262,7 @@ test("archive recovery preserves a tombstone not bound to its operation", async 
     journalPath,
     `${JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         operationId,
         stage: "cleanup-authorized",
         source: fixture.sourceRoot,

@@ -133,7 +133,10 @@ and requires the matching source URL for remote-provenance changes. Agents
 record the full 40- or 64-hex commit object ID, exact repository-relative skill
 path (`.` for a repository-root skill), and explicit `HEAD` or fully qualified
 branch/tag tracking ref. Bulk updates never guess or substitute a default ref.
-A same-tree revision advance updates metadata without copying content.
+A same-tree revision advance rechecks the current record and tree, then updates
+metadata without copying content. Remote provenance is stored only as that
+complete four-field set; partial records fail closed, while records with no
+remote provenance remain local-only.
 Changed content is staged, re-hashed, checked again against the current record
 and tree, and transactionally swapped under a recovery journal. Existing
 deployments remain untouched and are reported as outdated until explicitly

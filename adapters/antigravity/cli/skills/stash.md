@@ -155,9 +155,9 @@ is canonicalized, but path and ref spelling and case are preserved and compared
 exactly.
 Introducing a remote URL on a record that had none is allowed only through an
 explicit single-skill update that supplies the URL, full commit object ID,
-path, and tracking ref together. Existing legacy remote records without a path
-or tracking ref remain single-skill-only until explicitly enriched; bulk
-automation must skip them.
+path, and tracking ref together. A stored record containing only some remote
+provenance fields is invalid; lifecycle commands fail closed instead of
+guessing, enriching, or bypassing it.
 
 Interpret the result as follows:
 
@@ -182,9 +182,10 @@ directly at that path, and require its frontmatter name to equal the managed
 name. Never scan the repository for a same-named skill or choose among multiple
 matches. Run `update` for changed trees and also for unchanged trees whose
 immutable repository revision advanced, passing the same recorded tracking ref
-back to the command. Report records missing any provenance
-field as `legacy-unresolved` and skip them; never guess or bulk-enrich their
-upstream. Each skill update commits independently, so report all successes,
+back to the command. Skip records with all four fields absent as `local-only`;
+they have no declared upstream lineage. If `status` rejects a partial remote
+record, stop and report the invalid lifecycle state; never guess, bulk-enrich,
+or bypass it. Each skill update commits independently, so report all successes,
 skips, and failures rather than claiming batch atomicity.
 
 The lifecycle lock, commit-time compare-and-swap checks, tree hashes, and update
