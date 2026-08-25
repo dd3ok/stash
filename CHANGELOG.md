@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Reduce the portable skill and human guides to progressive, single-owner
+  documentation; make `stash --help` succeed and keep benchmarks and vendor
+  validation off unrelated pull-request paths.
 - Add a separate `StashLifecycle` Module with a local managed inactive store.
 - Add explicit local `install`/`archive`/`activate`/`deactivate`/`status`
   commands with provenance, tree hashes, tracked deployments, and drift guards.

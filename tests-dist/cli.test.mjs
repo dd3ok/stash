@@ -302,6 +302,12 @@ test("npm package entrypoints match the compiled layout", async () => {
   assert.match(stdout, /stash install <local-skill-dir>/u);
   assert.match(stdout, /stash update <local-skill-dir>/u);
   assert.match(stdout, /--source <id\|name\|url>/u);
+
+  const { stdout: flagHelp } = await execFileAsync(process.execPath, [
+    cli,
+    "--help",
+  ]);
+  assert.equal(flagHelp, stdout);
 });
 
 test("distribution metadata uses one Stash identity and version", async () => {
@@ -385,8 +391,7 @@ test("vendor adapters contain only their documented invocation policy", async ()
     /^---\r?\n([\s\S]*?)\r?\n---/u.exec(claudeSkill)?.[1] ?? "",
   );
   assert.equal(claudeFrontmatter["disable-model-invocation"], true);
-  assert.match(claudeSkill, /explicitly invokes `\/stash:stash`/u);
-  assert.match(claudeSkill, /--source <source>/u);
+  assert.match(claudeFrontmatter.description, /\/stash:stash/u);
   assert.doesNotMatch(claudeSkill, /\$stash/u);
   await assert.rejects(
     access(
@@ -412,9 +417,8 @@ test("vendor adapters contain only their documented invocation policy", async ()
     path.join(antigravityCliRoot, "skills", "stash.md"),
     "utf8",
   );
-  assert.match(antigravityCliSkill, /explicitly invokes `\/stash`/u);
+  assert.match(antigravityCliSkill, /\/stash/u);
   assert.match(antigravityCliSkill, /\.\.\/scripts\/stash\.mjs/u);
-  assert.match(antigravityCliSkill, /--source <source>/u);
   assert.doesNotMatch(antigravityCliSkill, /\$stash/u);
   await access(
     path.join(

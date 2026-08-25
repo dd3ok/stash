@@ -3,44 +3,37 @@
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run test:all
 ```
 
-After changing the canonical skill:
-
-```bash
-npm run build
-npm run lint:artifacts
-```
-
-Validate the Codex skill and plugin with the commands and prerequisites in
-[`docs/maintenance.md`](docs/maintenance.md) before opening a pull request.
+`test:all` checks the committed generated artifacts, source behavior, types,
+the production build, and the bundled distribution. Change canonical sources,
+run `npm run build`, and commit the regenerated outputs; never hand-edit
+`adapters/` or `skills/stash/scripts/stash.mjs`.
 
 ## Change rules
 
-- Keep the `StashCatalog` read Interface and `StashLifecycle` write Interface
-  small and authority-separated.
-- Keep vendor packaging in generated Adapters. Centralize the narrow lifecycle
-  host-path/reload policy in `src/internal/lifecycle-host-policy.ts`, and keep it
-  out of catalog search and safe-read path handling.
-- Add a failing golden or Interface test before changing relevance behavior.
-- Preserve no-match abstention.
-- Preserve all-relevant totals independently from page size.
-- Never add catalog mutation to a read path. An explicit lifecycle archive may
-  mutate only the exact standalone target selected by the caller; a catalog
-  registration never grants that authority.
-- Do not add remote calls or telemetry by default.
-- Update `docs/vendor-support.md` only from current first-party documentation and live contract tests.
+- Keep `StashCatalog` read-only and keep explicit writes behind
+  `StashLifecycle`.
+- Preserve deterministic exact lookup, no-match abstention, and all-relevant
+  totals independent of page size.
+- A catalog registration never grants lifecycle write authority.
+- Keep vendor packaging in generated adapters and lifecycle host policy in
+  `src/internal/lifecycle-host-policy.ts`.
+- Add or update behavior tests when a public result or security boundary
+  changes. Do not test documentation wording.
+- Do not add remote calls, telemetry, or routing complexity without evidence
+  from a real failing workload.
 
 ## Pull request evidence
 
-Include:
+Always state the behavior changed and the tests run. Add only the evidence that
+matches the change:
 
-- behavior changed;
-- tests added;
-- routing metric impact when applicable;
-- Windows/macOS/Linux impact;
-- generated artifact drift result;
-- vendor binary versions tested;
-- security impact.
+- routing results and `npm run bench` for routing changes;
+- security impact for path, lifecycle, provenance, lock, or recovery changes;
+- vendor validator and live version for metadata, packaging, or support claims;
+- platform impact when filesystem behavior changes.
+
+See [maintenance](docs/maintenance.md) for the matching commands.

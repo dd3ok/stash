@@ -12079,7 +12079,7 @@ standalone skills. They never mutate external catalogs, plugins, or host setting
 }
 async function main() {
   const args = parseArguments(process.argv.slice(2));
-  if (!args.command || args.command === "help" || booleanFlag(args, "help")) {
+  if (!args.command || args.command === "help" || args.command === "--help" || args.command === "-h" || booleanFlag(args, "help")) {
     process.stdout.write(usage());
     return;
   }

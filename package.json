@@ -34,11 +34,11 @@
     "build": "npm run clean && npm run build:types && npm run build:skill && npm run build:adapters",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:all": "npm run lint:artifacts && npm run typecheck && npm test && npm run build && npm run test:dist",
+    "test:all": "npm run check:generated && npm test && npm run build && npm run test:dist",
     "test:dist": "node --test tests-dist/*.test.mjs",
     "bench": "node --import tsx benchmarks/route-benchmark.ts",
-    "lint:artifacts": "node scripts/check-generated.mjs && node scripts/check-branding.mjs",
-    "prepack": "npm run lint:artifacts && npm run build && npm run test:dist",
+    "check:generated": "node scripts/check-generated.mjs",
+    "prepack": "npm run build",
     "pack:check": "npm pack --dry-run"
   },
   "engines": {

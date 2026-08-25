@@ -263,6 +263,8 @@ async function main(): Promise<void> {
   if (
     !args.command ||
     args.command === "help" ||
+    args.command === "--help" ||
+    args.command === "-h" ||
     booleanFlag(args, "help")
   ) {
     process.stdout.write(usage());

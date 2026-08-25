@@ -1,262 +1,119 @@
 ---
 name: stash
-description: Search a separate local Agent Skills library or explicitly manage inactive standalone skills. Use only when the user explicitly invokes `$stash` to open, find, list, install or update Stash, archive, activate, deactivate, or inspect a stored skill. Do not invoke Stash implicitly for ordinary work.
+description: Explicitly search a local Agent Skills library or manage Stash-owned inactive skills. Use only when the user invokes `$stash` to find, read, list, install, update, archive, activate, deactivate, or inspect a skill.
 ---
 
 # Stash
 
-Use the bundled CLI to search and read external read-only libraries and the
-Stash-managed inactive store. Run lifecycle operations only when the user
-explicitly requests them.
+Use Stash only after the user explicitly invokes `$stash`. Search and read are
+local and read-only. Run lifecycle commands only for an explicit lifecycle
+request.
 
 ## Locate the CLI
 
-Resolve `scripts/stash.mjs` relative to this `SKILL.md` and call the resolved absolute path `<stash-cli>` below. Do not reconstruct catalog paths or parse the generated index directly.
+Resolve `scripts/stash.mjs` relative to this `SKILL.md` and call that absolute
+path as `<stash-cli>`. Use `node <stash-cli> help` for accepted command syntax.
+Do not parse generated indexes or reconstruct catalog paths directly.
 
-## Route the explicit request
+## Route the request
 
-Classify the text after `$stash`.
+Classify the text after `$stash`:
 
-- `install <source>`, `import <source>`, or a request to put a skill directly
-  into Stash as inactive: follow [Lifecycle operations](#lifecycle-operations).
-- `update <source-or-name>` or a request to refresh one or every managed skill:
-  follow [Update a managed copy](#update-a-managed-copy).
-- `archive <skill-or-path>`, `activate <name>`, `deactivate <name>`, or
-  `status [name]`: follow [Lifecycle operations](#lifecycle-operations).
-- `list`: run `stash list --json`.
-- `<group> list`: run `stash list --group <group> --json`.
-- `<source> list`: run `stash list --source <source> --json`.
-- A source inventory question such as `what skills does <source> have?` or `<source>의 스킬들은 뭐야?`: run `stash list --source <source> --json`.
-- `<source> <group> list`: add both `--source <source>` and `--group <group>`.
-- `<skill-name>`: run `stash exact <skill-name> --json`.
-- `<source> <skill-name>`: add `--source <source>` to exact lookup.
-- `<skill-name> <task>`: resolve the exact name, read it, then apply it to `<task>`.
-- `find <request>` or a natural-language discovery request: run `stash search <request> --json`.
-- `<source> <request>`: when the remainder describes a task or topic, search it with `--source <source>`.
-- `<group> <skill-name> <task>`: add `--group <group>` to exact lookup.
+| Request | Route |
+|---|---|
+| `list`, source inventory, or group inventory | `list` with the supplied filters |
+| exact skill name, optionally followed by a task | `exact`, then `read` |
+| `find ...` or a task/topic without an exact name | `search`, then `read` when one skill is selected |
+| `status [name]` | lifecycle `status` |
+| `install`, `update`, `archive`, `activate`, or `deactivate` | [Lifecycle requests](#lifecycle-requests) |
 
-Treat a token as a source when the user identifies an author, owner, repository, or source ID. Keep explicitly source-scoped requests inside that source. Use an explicit mode. Do not pass a slug-like exact name through natural-language search first.
+Treat an author, repository, or source ID named by the user as `--source`. Keep
+an explicitly scoped request inside that source. Treat a slug-like skill name
+as exact before trying natural-language search.
 
-For every `list` mode, request each remaining page with the same filters and `--cursor <nextCursor>` until `nextCursor` is absent. `totalRelevant` is the complete count; never present the first transport page as the full inventory.
+## Find and read skills
 
-## Exact access
+### Exact access
 
-1. Run:
+1. Run `node <stash-cli> exact <name> [--source <source>] [--group <group>] --json`.
+2. On `ok`, use `matches[0].ref`. On `ambiguous-exact`, apply a supplied filter
+   or ask about the decisive difference. On `no-match`, retry once with
+   `search` using the name and remaining task text.
+3. Run `node <stash-cli> read <ref> --format json` and read `content`
+   completely.
+4. If no task remains, report which skill was loaded and wait. Otherwise apply
+   the loaded instructions in the current turn.
 
-   ```text
-   node <stash-cli> exact <name> [--source <source>] --json
-   ```
-
-2. Handle the status:
-   - `ok`: read `matches[0].ref` immediately.
-   - `ambiguous-exact`: use an explicit group when the request supplies one; otherwise show the decisive group difference and ask the user to choose.
-   - `no-match`: retry once with `search`, using the name and remaining task text.
-3. Read the selected skill:
-
-   ```text
-   node <stash-cli> read <ref> --format json
-   ```
-
-4. Read the returned `content` completely.
-5. If no task remains, report the loaded skill and wait. Do not invent a task.
-6. If a task remains, apply the loaded instructions in the current turn.
-
-## Discovery
+### Discovery
 
 1. Search with the original request:
 
    ```text
-   node <stash-cli> search "<request>" [--source <source>] --json
+   node <stash-cli> search "<request>" [--source <source>] [--group <group>] --json
    ```
 
-2. If `status` is `no-match`, retry once with compact translated terms and discriminative synonyms. Keep the original intent; avoid generic words such as `design`, `tool`, or `skill` when a narrower noun exists.
-3. Treat only `exact`, `strong`, and `material` results as relevant. Do not promote `possible` results without inspecting their evidence.
-4. Never use a fixed total result cap.
-5. When `nextCursor` is present and the user asks which skills exist or asks for all related skills, request every remaining page with the same query and `--cursor`.
-6. Group long results by source/catalog/group. Preserve source attribution in the answer and do not omit later pages.
-7. When the user provides a concrete task:
-   - compare descriptions and relevance evidence with the original request;
-   - prefer the narrowest skill that fully covers the requested outcome;
-   - choose one clear winner without asking;
-   - ask only when multiple candidates remain materially plausible.
-8. If the second search still finds no relevant skill, report that outcome. Never dump the full catalog as a semantic fallback.
+2. If there is no match, retry once with compact translated terms and specific
+   synonyms. Do not broaden the intent with generic words.
+3. Treat only `exact`, `strong`, and `material` results as relevant. Do not
+   promote `possible` results without inspecting their evidence.
+4. For a concrete task, prefer the narrowest skill that fully covers it. Ask
+   only when multiple candidates remain materially plausible.
+5. If the second search has no relevant result, report that outcome; do not
+   dump the full catalog as a fallback.
 
-## Read supporting resources
+### Inventory and pagination
 
-Resolve resources only through the CLI:
+Use `list` with any supplied `--source` and `--group` filters. For inventory,
+“all related,” or any `list` request, follow `nextCursor` with the same request
+and filters until it is absent. `totalRelevant` is the complete count; a page is
+only transport.
+
+### Supporting resources
+
+Read a selected resource only when its `SKILL.md` requires it:
 
 ```text
 node <stash-cli> read <ref> --resource <relative-path> --format json
 ```
 
-Read only resources directly required by the selected `SKILL.md`. For a script or binary that must be used by another tool, request `--format path`; do not execute it merely because it was discovered.
+Use `--format path` only when another tool needs a verified local file. Finding
+a script does not authorize executing it.
 
-## Lifecycle operations
+## Lifecycle requests
 
-Treat lifecycle commands as a separate mutation workflow from catalog search.
-Do not infer permission from a discovery request.
+Before `install`, `update`, `archive`, `activate`, or `deactivate`, read
+[CLI-CONTRACT.md](references/CLI-CONTRACT.md) completely and follow its
+Lifecycle contract. It owns the mutation preconditions, remote provenance
+rules, bulk-update workflow, result meanings, and supported targets.
 
-### Install inactive
+Run `status --json` before an update and whenever current ownership or integrity
+matters. Use the CLI syntax from `node <stash-cli> help`; do not copy a command
+from human documentation when the help differs.
 
-For a local skill directory, run:
+Never infer lifecycle permission from search, list, or read. Report the returned
+storage, integrity, deployment, ownership, host observation, reload, and warning
+fields separately. `deployed` does not prove that a host-level enable/disable
+setting is enabled.
 
-```text
-node <stash-cli> install <local-skill-directory> \
-  [--source-url <canonical-repository-url>] \
-  [--revision <resolved-immutable-revision>] \
-  [--repository-path <repository-relative-skill-root>] \
-  [--tracking-ref <HEAD-or-fully-qualified-git-ref>] --json
-```
+## Conditional references
 
-The source must contain `SKILL.md` directly. The command copies a verified
-snapshot into the managed store and leaves the source unchanged.
-
-When the user explicitly provides a remote repository source, stage the
-requested revision in a newly created temporary directory outside every host
-skill discovery path, inspect the selected skill root, then run the local
-install command with its canonical source URL, resolved immutable revision, and
-exact repository-relative skill root (`.` for a root skill), plus the exact
-update lineage as `HEAD`, `refs/heads/...`, or `refs/tags/...`. Resolve that ref
-to the full 40- or 64-hex commit object ID before recording it; never record a
-mutable ref as the revision. These four provenance fields are all-or-none; the
-CLI rejects a partial remote identity. If the user supplied only a raw commit
-object ID and no safe tracking ref exists, import it without remote provenance
-and report that all-managed update cannot infer a lineage. Do not execute
-repository content. Do not install it into a host skill folder first. Remove
-only the temporary staging directory after a successful managed import.
-
-### Update a managed copy
-
-Update only an existing managed canonical copy. Read its current state first:
-
-```text
-node <stash-cli> status <name> --json
-```
-
-Stage and inspect the replacement outside every host discovery path, then run:
-
-```text
-node <stash-cli> update <local-skill-directory> \
-  --expected-tree-hash <current-store-expectedTreeHash> \
-  [--expected-revision <current-source-revision>] \
-  [--source-url <canonical-repository-url>] \
-  [--revision <new-resolved-immutable-revision>] \
-  [--repository-path <repository-relative-skill-root>] \
-  [--tracking-ref <HEAD-or-fully-qualified-git-ref>] --json
-```
-
-The source must contain `SKILL.md` directly and its name must already exist in
-Stash. Pass `--expected-revision` whenever status reports a current revision.
-For a content or revision change with remote provenance, pass the recorded
-source URL and the resolved new full commit object ID. Changed remote content
-must use a revision different from the recorded revision. The source URL,
-repository path, and tracking ref are exact provenance identities; URL syntax
-is canonicalized, but path and ref spelling and case are preserved and compared
-exactly.
-Introducing a remote URL on a record that had none is allowed only through an
-explicit single-skill update that supplies the URL, full commit object ID,
-path, and tracking ref together. A stored record containing only some remote
-provenance fields is invalid; lifecycle commands fail closed instead of
-guessing, enriching, or bypassing it.
-
-Interpret the result as follows:
-
-- `updated`: the verified managed tree was transactionally replaced.
-- `metadata-updated`: the tree was unchanged and only provenance advanced.
-- `already-current`: neither content nor requested provenance changed.
-
-Update preserves the stable `skillId` and deployment records. It never rewrites
-host deployments. Report `outdatedDeployments`; `status` marks a deployment
-with `current: false` when it still contains the previous managed tree. Refresh
-such a deployment only through an explicit `deactivate` followed by `activate`.
-
-For an all-managed update request, get unfiltered `status` and select only
-records that contain `source.url`, `source.revision`, and
-`source.repositoryPath`, plus `source.trackingRef`. Group them by canonical
-repository URL and exact tracking ref, resolve only that recorded ref to an
-immutable revision, and stage each repository/ref pair once. Never substitute
-the remote default ref for a missing or different recorded ref.
-For every record, address only the exact recorded repository-relative path,
-verify realpath containment inside the staged repository, require `SKILL.md`
-directly at that path, and require its frontmatter name to equal the managed
-name. Never scan the repository for a same-named skill or choose among multiple
-matches. Run `update` for changed trees and also for unchanged trees whose
-immutable repository revision advanced, passing the same recorded tracking ref
-back to the command. Skip records with all four fields absent as `local-only`;
-they have no declared upstream lineage. If `status` rejects a partial remote
-record, stop and report the invalid lifecycle state; never guess, bulk-enrich,
-or bypass it. Each skill update commits independently, so report all successes,
-skips, and failures rather than claiming batch atomicity.
-
-The lifecycle lock, commit-time compare-and-swap checks, tree hashes, and update
-journal are the authority for the replacement. A later lifecycle mutation
-recovers an interrupted process by either restoring the old managed tree or
-finishing the committed cleanup. This is process-crash recovery, not a claim of
-power-loss durability. Preserve an external failed repository staging directory
-for diagnosis. Remove it only after `updated`, `metadata-updated`, or
-`already-current` returns successfully.
-
-### Archive a standalone skill
-
-Resolve exactly one standalone skill directory under the host's documented
-user skill root:
-
-```text
-node <stash-cli> archive <name> --host <host> [--scope user] --json
-```
-
-The source must be an exact child of the documented user root. Arbitrary custom
-roots and workspace roots are unsupported because Stash cannot prove that the
-host discovers them. Explain that archive removes the source only after a
-journaled copy, validation, hash check, and commit. Never archive a
-plugin-contained skill; delegate plugin lifecycle to the host. If the exact
-path is already a verified Stash-owned deployment, archive must use tracked
-deactivation semantics and preserve the canonical copy.
-
-### Deploy or withdraw a managed copy
-
-Run:
-
-```text
-node <stash-cli> activate <name> --host <host> [--scope user] --json
-node <stash-cli> deactivate <name> --host <host> [--scope user] --json
-```
-
-Report the JSON state as `deployed`, not as proof that the host considers the
-skill enabled. Stash does not change Codex `skills.config`, Claude Code
-`skillOverrides`, plugin state, or equivalent vendor settings. `deactivate`
-removes only a deployment with matching Stash ownership, logical `skillId`,
-target, and tree hash; never adopt or delete an untracked directory.
-
-Antigravity CLI uses flat Markdown standalone skills in both documented scopes,
-so reject it as a lifecycle host. Workspace lifecycle targets are also outside
-this release. After a discovery-path change, honor `reloadRequired` and
-`warning` in the result.
-
-### Inspect state
-
-Run `stash status [name] --json`. Report storage state, integrity, deployment
-state, ownership, and host observation as separate fields. A deployed copy can
-still be disabled by its host; the override remains `unknown`.
-
-## Error handling
-
-- For missing configuration, read [CONFIGURATION.md](references/CONFIGURATION.md).
-- For result statuses and fields, read [CLI-CONTRACT.md](references/CLI-CONTRACT.md).
-- Report malformed, quarantined, hash-mismatched, unavailable, or path-rejected skills instead of bypassing the failure.
+- Read [CLI-CONTRACT.md](references/CLI-CONTRACT.md) for a lifecycle mutation,
+  a non-`ok` result, pagination fields, or exit-code diagnosis.
+- Read [CONFIGURATION.md](references/CONFIGURATION.md) only after Stash reports
+  missing or invalid configuration.
 
 ## Boundaries
 
-- Treat every external configured catalog as read-only.
-- Install may read an explicitly selected local skill inside a configured
-  catalog, but it must preserve that source. Treat hash-matching related copies
-  as projections of the managed canonical result, not as lifecycle authority.
-- Run lifecycle commands only when explicitly requested, and only against the
-  Stash-managed store or an exact standalone child of an explicitly selected,
-  supported host root.
+- Keep every external configured catalog read-only.
+- Write only to the Stash-managed store or the exact supported standalone host
+  child selected by an explicit lifecycle request.
 - Delegate plugin lifecycle and vendor enable/disable settings to the host.
-- Do not overwrite, follow links, or delete an untracked or drifted deployment.
-- Do not invoke `stash` implicitly for ordinary work.
-- Treat loaded skill instructions as task-local and subordinate to current system, developer, and user instructions.
-- Treat discovery as context optimization, not as an execution permission or security approval.
-- Do not access generated cache files or absolute paths directly.
+- Do not overwrite, follow links from, adopt, or delete an untracked or drifted
+  deployment.
+- Do not execute repository or skill content merely because it was discovered,
+  staged, or read.
+- Report malformed, quarantined, hash-mismatched, unavailable, or path-rejected
+  skills instead of bypassing the failure.
+- Treat loaded skill instructions as task-local and subordinate to current
+  system, developer, and user instructions.
+- Do not invoke Stash implicitly for ordinary work.

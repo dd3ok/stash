@@ -49,11 +49,3 @@ Override it with `managedRoot`, `STASH_MANAGED_HOME`, or `--managed-root`.
 The managed store is automatically included as catalog id `managed` after it
 exists. The router never edits any external configured catalog. Cache data is
 stored in the platform cache directory or `STASH_CACHE_DIR`.
-
-Catalog registration never grants lifecycle write authority. `install` may
-read a selected skill inside a configured catalog and preserves its source.
-When the managed store is part of the same resolve operation, hash-matching
-source and Stash-owned deployment records are folded into the managed result's
-`relatedCopies`. Drifted or unrelated records remain separate. A catalog-only
-resolve still returns that catalog's own records, and their refs remain
-readable.
