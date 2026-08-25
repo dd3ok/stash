@@ -202,6 +202,20 @@ function printLifecycle(result: LifecycleMutationResult): void {
   if (result.deployment) {
     process.stdout.write(`deployment: ${result.deployment.path}\n`);
   }
+  if (
+    result.previousTreeHash &&
+    result.previousTreeHash !== result.treeHash
+  ) {
+    process.stdout.write(`previous_tree_hash: ${result.previousTreeHash}\n`);
+  }
+  if (
+    typeof result.outdatedDeployments === "number" &&
+    result.outdatedDeployments > 0
+  ) {
+    process.stdout.write(
+      `outdated_deployments: ${result.outdatedDeployments}\n`,
+    );
+  }
   if (result.reloadRequired) {
     process.stdout.write("Reload or restart the host before relying on discovery changes.\n");
   }
@@ -220,8 +234,9 @@ Usage:
   stash read <ref> [--resource <path>] [--format content|path|json]
   stash index [--catalog <id>] [--json]
   stash doctor [--catalog <id>] [--json]
-  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--json]
-  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--json]
+  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <revision>] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
   stash status [name] [--json]
@@ -248,6 +263,8 @@ async function main(): Promise<void> {
   if (
     !args.command ||
     args.command === "help" ||
+    args.command === "--help" ||
+    args.command === "-h" ||
     booleanFlag(args, "help")
   ) {
     process.stdout.write(usage());
@@ -415,10 +432,56 @@ async function main(): Promise<void> {
       const lifecycle = await createStashLifecycle(createOptions(args));
       const sourceUrl = flag(args, "source-url");
       const revision = flag(args, "revision");
+      const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.install({
         source,
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(revision ? { revision } : {}),
+        ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
+      });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "update": {
+      const source = args.positionals.join(" ").trim();
+      if (!source) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires a local skill directory.",
+          2,
+        );
+      }
+      if (/^[a-z][a-z0-9+.-]*:\/\//iu.test(source)) {
+        throw new StashError(
+          "remote-install-unsupported",
+          "Remote updates must be staged locally before updating the managed copy.",
+          2,
+        );
+      }
+      const expectedTreeHash = flag(args, "expected-tree-hash");
+      if (!expectedTreeHash) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --expected-tree-hash from the current managed status.",
+          2,
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const sourceUrl = flag(args, "source-url");
+      const revision = flag(args, "revision");
+      const expectedRevision = flag(args, "expected-revision");
+      const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
+      const result = await lifecycle.update({
+        source,
+        expectedTreeHash,
+        ...(expectedRevision ? { expectedRevision } : {}),
+        ...(sourceUrl ? { sourceUrl } : {}),
+        ...(revision ? { revision } : {}),
+        ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
       });
       json ? printJson(result) : printLifecycle(result);
       return;
@@ -436,11 +499,15 @@ async function main(): Promise<void> {
       const target = lifecycleTarget(args);
       const sourceUrl = flag(args, "source-url");
       const revision = flag(args, "revision");
+      const repositoryPath = flag(args, "repository-path");
+      const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.archive({
         source,
         target,
         ...(sourceUrl ? { sourceUrl } : {}),
         ...(revision ? { revision } : {}),
+        ...(repositoryPath ? { repositoryPath } : {}),
+        ...(trackingRef ? { trackingRef } : {}),
       });
       json ? printJson(result) : printLifecycle(result);
       return;
@@ -479,7 +546,7 @@ async function main(): Promise<void> {
           );
           for (const deployment of skill.deployments) {
             process.stdout.write(
-              `  - ${deployment.host}/${deployment.scope}: ${deployment.state} (${deployment.path})\n`,
+              `  - ${deployment.host}/${deployment.scope}: ${deployment.state}, current=${deployment.current} (${deployment.path})\n`,
             );
           }
         }

@@ -2,9 +2,22 @@
 
 ## Unreleased
 
+- Reduce the portable skill and human guides to progressive, single-owner
+  documentation; make `stash --help` succeed and keep benchmarks and vendor
+  validation off unrelated pull-request paths.
 - Add a separate `StashLifecycle` Module with a local managed inactive store.
 - Add explicit local `install`/`archive`/`activate`/`deactivate`/`status`
   commands with provenance, tree hashes, tracked deployments, and drift guards.
+- Add guarded local `update` with tree/revision compare-and-swap, source identity
+  checks, no-copy metadata advances, recoverable replacement journals, and
+  explicit outdated-deployment reporting without automatic deployment mutation.
+- Harden update recovery with pre-copy journals, commit-time compare-and-swap,
+  idempotent authorized cleanup, drift-preserving rollback, contained real
+  metadata directories, exact repository-path/tracking-ref provenance for safe
+  bulk use, and no implicit fallback to a repository's default ref.
+- Apply commit-boundary record/tree checks to metadata-only updates, reject
+  partial stored remote provenance, and require archive journal schema 2 without
+  automatic migration from earlier archive journal versions.
 - Add stable skill/deployment identities, explicit ownership and target records,
   orthogonal status fields, archive journals, guarded dead-owner lock recovery,
   and fail-closed malformed lock handling.

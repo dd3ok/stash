@@ -1,71 +1,63 @@
 # Installation and local testing
 
-Build once from the repository root:
+Build from the repository root:
 
 ```bash
 npm ci
 npm run build
+node skills/stash/scripts/stash.mjs help
 ```
 
-Configure an external catalog as described in the README, or use the managed
-store without a config file. Installing the router does not move, enable,
-disable, or modify any external catalog skill.
+Configure an external catalog with
+[`CONFIGURATION.md`](../skills/stash/references/CONFIGURATION.md), or use the
+managed store without configuration. Installing the router never moves or
+changes an external catalog skill.
 
-## Managed store
+## Managed store smoke test
 
 The first explicit lifecycle command creates the platform managed root. Override
 it with `STASH_MANAGED_HOME`, `--managed-root`, or config `managedRoot`.
 
 ```bash
 stash install /path/to/rare-skill
-stash status rare-skill
+stash status rare-skill --json
+stash activate rare-skill --host codex --json
+stash deactivate rare-skill --host codex --json
 ```
 
-Remote URLs are not accepted by the CLI. Stage a requested repository revision
-outside every host discovery path, review it, and import the local skill root.
-Lifecycle deployment is standalone-only: plugins and vendor enable/disable
-settings stay under their host's controls.
+Use `stash help` for syntax and the
+[`CLI-CONTRACT.md`](../skills/stash/references/CLI-CONTRACT.md) for mutation
+preconditions and result meanings. Remote repository content must be staged and
+reviewed locally before install or update.
 
 ## OpenAI Codex
 
-For standalone local use, copy `adapters/codex/skills/stash` to:
+Copy `adapters/codex/skills/stash` to:
 
 ```text
 $HOME/.agents/skills/stash
 ```
 
-Start a new Codex session, then invoke:
+Start a new session and invoke `$stash design-system`.
+`agents/openai.yaml` keeps implicit invocation off. Setting the Codex skill
+override to `enabled=false` also disables explicit invocation, so do not use it
+as a manual-only switch.
 
-```text
-$stash design-system
-$stash API 문서 검토에 필요한 스킬을 찾아줘
-```
-
-`agents/openai.yaml` keeps implicit invocation off. Do not set the skill's
-Codex `enabled` override to `false`; that disables explicit invocation too.
-
-The repository root is also a validated skills-only Codex plugin. Publication
-to the universal plugin directory or addition to a local Codex marketplace is a
-separate distribution step and is intentionally not performed by this project.
+The repository root is also a Codex plugin package. Publishing it is a separate
+distribution action.
 
 ## Anthropic Claude Code
 
-For a one-session development test:
+Run a development session:
 
 ```bash
 claude --plugin-dir ./adapters/claude-code
 ```
 
-Invoke the namespaced skill:
+Invoke `/stash:stash design-system`. Generated frontmatter sets
+`disable-model-invocation: true`.
 
-```text
-/stash:stash design-system
-```
-
-The generated frontmatter sets `disable-model-invocation: true`.
-
-The repository also contains `.claude-plugin/marketplace.json`. After cloning,
-Claude Code can add it as a local marketplace:
+The repository also provides a local Claude marketplace:
 
 ```text
 /plugin marketplace add .
@@ -73,22 +65,11 @@ Claude Code can add it as a local marketplace:
 /reload-plugins
 ```
 
-After the repository is published, replace `.` with its supported GitHub
-marketplace source. Installed plugin files are cached, so all runtime files stay
-inside `adapters/claude-code`.
-
 ## Google Antigravity IDE
 
-Copy `adapters/antigravity/ide` into a custom plugin location documented for the
-target surface, for example:
-
-```text
-<workspace>/.agents/plugins/stash
-```
-
-Start a fresh session and explicitly mention `stash` by name. Current official
-IDE documentation does not define a skill-level manual-only field, so this
-Adapter does not claim that automatic selection is technically disabled.
+Place `adapters/antigravity/ide` in the custom plugin location documented for
+the target version, start a fresh session, and mention `stash` by name. The
+current public format has no skill-level manual-only field.
 
 ## Google Antigravity CLI
 
@@ -98,19 +79,13 @@ With a target `agy` binary:
 agy plugin install ./adapters/antigravity/cli
 ```
 
-Check `/skills`, then invoke:
-
-```text
-/stash design-system
-```
-
-The Adapter follows the current CLI page's flat `skills/stash.md` form. Google
-also publishes a directory-based CLI codelab, so record the tested `agy` version
-before declaring that version supported.
+Check `/skills`, then invoke `/stash design-system`. Record the tested binary
+version before claiming support. Standalone lifecycle deployment is unsupported
+because the documented CLI layout is flat Markdown rather than a skill folder.
 
 ## Uninstall and rollback
 
-Use each host's own plugin controls. Before uninstalling Stash, run
-`stash status --json` and deactivate any recorded standalone deployments you
-no longer want. Removing the router does not remove external catalogs, the
-managed store, or host deployments automatically.
+Use each host's plugin controls. Before uninstalling Stash, run
+`stash status --json` and deactivate recorded standalone deployments you no
+longer want. Removing the router does not remove catalogs, managed storage, or
+deployments automatically.

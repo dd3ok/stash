@@ -79,6 +79,18 @@ export interface TreeFingerprint {
   captured: ReadonlyMap<string, Buffer>;
 }
 
+export function isPortablePathSegment(segment: string): boolean {
+  if (
+    !segment ||
+    /[. ]$/u.test(segment) ||
+    /[<>:"/\\|?*\u0000-\u001F\u007F]/u.test(segment)
+  ) {
+    return false;
+  }
+  const base = segment.split(".", 1)[0]?.toLocaleLowerCase("und") ?? "";
+  return !WINDOWS_RESERVED_NAMES.has(base);
+}
+
 function validatePortableSegment(segment: string): void {
   if (
     !segment ||
@@ -91,8 +103,7 @@ function validatePortableSegment(segment: string): void {
       segment,
     );
   }
-  const base = segment.split(".", 1)[0]?.toLocaleLowerCase("und") ?? "";
-  if (WINDOWS_RESERVED_NAMES.has(base)) {
+  if (!isPortablePathSegment(segment)) {
     throw new TreeFingerprintError(
       "unsafe-path",
       `Skill path segment is reserved on Windows: "${segment}".`,

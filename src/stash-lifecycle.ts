@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 import type {
   CreateStashLifecycleOptions,
@@ -26,6 +27,7 @@ import type {
   LifecycleSkillStatus,
   LifecycleStatusRequest,
   LifecycleStatusResult,
+  LifecycleUpdateRequest,
   ManagedSkillRecord,
   StashLifecycle,
   VendorCompatibility,
@@ -42,6 +44,13 @@ import {
   TreeFingerprintError,
   type TreeFingerprintEntry,
 } from "./internal/tree-fingerprint.js";
+import {
+  canonicalImmutableRevision,
+  canonicalLifecycleSourceUrl,
+  canonicalRepositoryPath,
+  canonicalTrackingRef,
+  validStoredRemoteProvenance,
+} from "./internal/lifecycle-provenance.js";
 import {
   isPathInside,
   pathIdentity,
@@ -67,13 +76,14 @@ interface StoredSource {
 }
 
 interface ArchiveJournal {
-  schemaVersion: 1;
+  schemaVersion: 2;
   operationId: string;
   stage:
     | "started"
     | "managed-committed"
     | "source-tombstoned"
-    | "archive-committed";
+    | "archive-committed"
+    | "cleanup-authorized";
   source: string;
   tombstone: string;
   name: string;
@@ -82,6 +92,34 @@ interface ArchiveJournal {
   managedExistedBefore: boolean;
   createdAt: string;
 }
+
+interface ManagedUpdateJournal {
+  schemaVersion: 1;
+  kind: "managed-update";
+  operationId: string;
+  stage:
+    | "staging"
+    | "stage-ready"
+    | "started"
+    | "old-tombstoned"
+    | "new-committed"
+    | "record-committed"
+    | "rollback-discarded"
+    | "rollback-restored"
+    | "commit-discarded"
+    | "cleanup-authorized";
+  name: string;
+  skillId: string;
+  oldTreeHash: string;
+  newTreeHash: string;
+  managedPath: string;
+  stagePath: string;
+  backupPath: string;
+  discardPath?: string;
+  createdAt: string;
+}
+
+type LifecycleJournal = ArchiveJournal | ManagedUpdateJournal;
 
 interface LifecycleLockOwner {
   schemaVersion: 1;
@@ -235,7 +273,9 @@ async function copySnapshot(
   }
 }
 
-async function pathType(target: string): Promise<"missing" | "directory" | "link" | "other"> {
+async function pathType(
+  target: string,
+): Promise<"missing" | "directory" | "file" | "link" | "special"> {
   try {
     const info = await lstat(target);
     if (info.isSymbolicLink()) {
@@ -244,7 +284,10 @@ async function pathType(target: string): Promise<"missing" | "directory" | "link
     if (info.isDirectory()) {
       return "directory";
     }
-    return "other";
+    if (info.isFile()) {
+      return "file";
+    }
+    return "special";
   } catch (error) {
     const code =
       error && typeof error === "object" && "code" in error
@@ -309,10 +352,79 @@ class StashLifecycleImplementation implements StashLifecycle {
     return path.join(this.#metadataRoot(), "records", `${name}.json`);
   }
 
+  async #ensureRealDirectory(target: string, label: string): Promise<void> {
+    let type = await pathType(target);
+    if (type === "missing") {
+      await mkdir(target, { recursive: false });
+      type = await pathType(target);
+    }
+    if (type !== "directory") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `${label} must be a real directory inside the managed root: "${target}".`,
+        3,
+      );
+    }
+  }
+
+  async #assertManagedLayout(): Promise<void> {
+    if ((await pathType(this.#managedRoot)) !== "directory") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Managed root must be a real directory: "${this.#managedRoot}".`,
+        3,
+      );
+    }
+    const canonicalManaged = await realpath(this.#managedRoot);
+    for (const [target, label] of [
+      [this.#metadataRoot(), "Managed metadata root"],
+      [path.join(this.#metadataRoot(), "records"), "Managed records root"],
+      [path.join(this.#metadataRoot(), "staging"), "Managed staging root"],
+      [path.join(this.#metadataRoot(), "journal"), "Managed journal root"],
+    ] as const) {
+      if ((await pathType(target)) !== "directory") {
+        throw new StashError(
+          "unsafe-managed-layout",
+          `${label} must be a real directory: "${target}".`,
+          3,
+        );
+      }
+      const canonicalTarget = await realpath(target);
+      if (!isPathInside(canonicalManaged, canonicalTarget)) {
+        throw new StashError(
+          "unsafe-managed-layout",
+          `${label} escapes the managed root: "${target}".`,
+          3,
+        );
+      }
+    }
+  }
+
   async #ensureLayout(): Promise<void> {
-    await mkdir(path.join(this.#metadataRoot(), "records"), { recursive: true });
-    await mkdir(path.join(this.#metadataRoot(), "staging"), { recursive: true });
-    await mkdir(path.join(this.#metadataRoot(), "journal"), { recursive: true });
+    const managedType = await pathType(this.#managedRoot);
+    if (managedType === "missing") {
+      await mkdir(this.#managedRoot, { recursive: true });
+    } else if (managedType !== "directory") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Managed root must be a real directory: "${this.#managedRoot}".`,
+        3,
+      );
+    }
+    await this.#ensureRealDirectory(this.#metadataRoot(), "Managed metadata root");
+    await this.#ensureRealDirectory(
+      path.join(this.#metadataRoot(), "records"),
+      "Managed records root",
+    );
+    await this.#ensureRealDirectory(
+      path.join(this.#metadataRoot(), "staging"),
+      "Managed staging root",
+    );
+    await this.#ensureRealDirectory(
+      path.join(this.#metadataRoot(), "journal"),
+      "Managed journal root",
+    );
+    await this.#assertManagedLayout();
     const manifestPath = path.join(this.#managedRoot, "stash.catalog.yaml");
     try {
       await writeFile(
@@ -331,12 +443,64 @@ class StashLifecycleImplementation implements StashLifecycle {
     }
   }
 
+  async #hasSafeRecordsRoot(): Promise<boolean> {
+    const managedType = await pathType(this.#managedRoot);
+    if (managedType === "missing") {
+      return false;
+    }
+    if (managedType !== "directory") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Managed root must be a real directory: "${this.#managedRoot}".`,
+        3,
+      );
+    }
+    const metadataRoot = this.#metadataRoot();
+    const metadataType = await pathType(metadataRoot);
+    if (metadataType === "missing") {
+      return false;
+    }
+    const recordsRoot = path.join(metadataRoot, "records");
+    if (
+      metadataType !== "directory" ||
+      (await pathType(recordsRoot)) !== "directory"
+    ) {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Managed records root must be a real directory: "${recordsRoot}".`,
+        3,
+      );
+    }
+    const canonicalManaged = await realpath(this.#managedRoot);
+    const canonicalMetadata = await realpath(metadataRoot);
+    const canonicalRecords = await realpath(recordsRoot);
+    if (
+      !isPathInside(canonicalManaged, canonicalMetadata) ||
+      !isPathInside(canonicalManaged, canonicalRecords)
+    ) {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Managed records root escapes the managed root: "${recordsRoot}".`,
+        3,
+      );
+    }
+    return true;
+  }
+
   #journalPath(operationId: string): string {
     return path.join(this.#metadataRoot(), "journal", `${operationId}.json`);
   }
 
-  async #writeJournal(journal: ArchiveJournal): Promise<void> {
+  async #writeJournal(journal: LifecycleJournal): Promise<void> {
     const finalPath = this.#journalPath(journal.operationId);
+    const finalType = await pathType(finalPath);
+    if (finalType !== "missing" && finalType !== "file") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Lifecycle journal target is not a real file: "${finalPath}".`,
+        3,
+      );
+    }
     const temporaryPath = `${finalPath}.${randomUUID()}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(journal, null, 2)}\n`, {
       encoding: "utf8",
@@ -350,13 +514,411 @@ class StashLifecycleImplementation implements StashLifecycle {
     }
   }
 
-  async #advanceArchiveJournal(
-    journal: ArchiveJournal,
-    stage: ArchiveJournal["stage"],
+  async #advanceJournal<Journal extends LifecycleJournal>(
+    journal: Journal,
+    stage: Journal["stage"],
   ): Promise<void> {
-    const next = { ...journal, stage };
+    const next = { ...journal, stage } as Journal;
     await this.#writeJournal(next);
     journal.stage = stage;
+  }
+
+  #updateDiscardPath(journal: ManagedUpdateJournal): string {
+    return (
+      journal.discardPath ??
+      path.join(
+        this.#metadataRoot(),
+        "staging",
+        `update-${journal.operationId}-discard`,
+      )
+    );
+  }
+
+  #validateUpdateJournal(
+    journal: ManagedUpdateJournal,
+    journalPath: string,
+  ): void {
+    const stages = new Set<ManagedUpdateJournal["stage"]>([
+      "staging",
+      "stage-ready",
+      "started",
+      "old-tombstoned",
+      "new-committed",
+      "record-committed",
+      "rollback-discarded",
+      "rollback-restored",
+      "commit-discarded",
+      "cleanup-authorized",
+    ]);
+    if (
+      journal.schemaVersion !== 1 ||
+      journal.kind !== "managed-update" ||
+      !/^[0-9a-f-]{36}$/iu.test(journal.operationId) ||
+      !stages.has(journal.stage) ||
+      !NAME_PATTERN.test(journal.name) ||
+      typeof journal.skillId !== "string" ||
+      journal.skillId.length === 0 ||
+      !/^sha256:[0-9a-f]{64}$/iu.test(journal.oldTreeHash) ||
+      !/^sha256:[0-9a-f]{64}$/iu.test(journal.newTreeHash) ||
+      journal.oldTreeHash === journal.newTreeHash ||
+      typeof journal.createdAt !== "string" ||
+      typeof journal.managedPath !== "string" ||
+      typeof journal.stagePath !== "string" ||
+      typeof journal.backupPath !== "string" ||
+      (journal.discardPath !== undefined &&
+        typeof journal.discardPath !== "string") ||
+      !path.isAbsolute(journal.managedPath) ||
+      !path.isAbsolute(journal.stagePath) ||
+      !path.isAbsolute(journal.backupPath) ||
+      (journal.discardPath !== undefined &&
+        !path.isAbsolute(journal.discardPath))
+    ) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Invalid or unsafe managed update journal "${journalPath}".`,
+        5,
+      );
+    }
+    const stagingRoot = path.join(this.#metadataRoot(), "staging");
+    if (
+      !samePath(
+        journal.managedPath,
+        path.join(this.#managedRoot, journal.name),
+      ) ||
+      !samePath(
+        journal.stagePath,
+        path.join(stagingRoot, `update-${journal.operationId}-next`),
+      ) ||
+      !samePath(
+        journal.backupPath,
+        path.join(stagingRoot, `update-${journal.operationId}-previous`),
+      ) ||
+      !samePath(
+        this.#updateDiscardPath(journal),
+        path.join(stagingRoot, `update-${journal.operationId}-discard`),
+      )
+    ) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Invalid or unsafe managed update journal "${journalPath}".`,
+        5,
+      );
+    }
+  }
+
+  async #journalTreeHash(
+    target: string,
+    label: string,
+  ): Promise<string | undefined> {
+    const type = await pathType(target);
+    if (type === "missing") {
+      return undefined;
+    }
+    if (type !== "directory") {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} is not a real directory: "${target}".`,
+        4,
+      );
+    }
+    return (await snapshotTree(target)).treeHash;
+  }
+
+  async #moveVerifiedJournalTree(
+    source: string,
+    destination: string,
+    expectedTreeHash: string,
+    label: string,
+  ): Promise<void> {
+    if ((await pathType(destination)) !== "missing") {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} destination is occupied at "${destination}".`,
+        4,
+      );
+    }
+    const sourceHash = await this.#journalTreeHash(source, label);
+    if (sourceHash !== expectedTreeHash) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} drifted at "${source}".`,
+        4,
+      );
+    }
+    await rename(source, destination);
+    const destinationHash = await this.#journalTreeHash(destination, label);
+    if (destinationHash !== expectedTreeHash) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} changed while moving to "${destination}".`,
+        4,
+      );
+    }
+  }
+
+  async #removeAuthorizedUpdateTree(
+    journal: ManagedUpdateJournal,
+    target: string,
+    authorization: "staging" | "cleanup",
+  ): Promise<void> {
+    const expected =
+      authorization === "staging"
+        ? journal.stagePath
+        : this.#updateDiscardPath(journal);
+    if (!samePath(target, expected)) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Managed update ${authorization} path is not operation-owned: "${target}".`,
+        5,
+      );
+    }
+    await this.#assertManagedLayout();
+    const type = await pathType(target);
+    if (type === "missing") {
+      return;
+    }
+    if (type === "directory") {
+      await rm(target, { recursive: true, force: true });
+      return;
+    }
+    await unlink(target);
+  }
+
+  async #recoverUpdateJournal(
+    journal: ManagedUpdateJournal,
+    journalPath: string,
+  ): Promise<"committed" | "rolled-back"> {
+    await this.#assertManagedLayout();
+    const record = await this.#readRecord(journal.name);
+    if (!record || record.skillId !== journal.skillId) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed update ownership changed for "${journal.name}".`,
+        4,
+      );
+    }
+    const discardPath = this.#updateDiscardPath(journal);
+    const managedHash = await this.#journalTreeHash(
+      journal.managedPath,
+      "Managed update target",
+    );
+    const backupHash = await this.#journalTreeHash(
+      journal.backupPath,
+      "Managed update backup",
+    );
+    if (journal.stage === "staging") {
+      if (
+        record.treeHash !== journal.oldTreeHash ||
+        managedHash === undefined ||
+        backupHash !== undefined ||
+        (await pathType(discardPath)) !== "missing"
+      ) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update staging state cannot be reconciled for "${journal.name}".`,
+          4,
+        );
+      }
+      await this.#removeAuthorizedUpdateTree(journal, journal.stagePath, "staging");
+      await unlink(journalPath);
+      return "rolled-back";
+    }
+
+    if (journal.stage === "cleanup-authorized") {
+      if (backupHash !== undefined || (await pathType(journal.stagePath)) !== "missing") {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Authorized managed update cleanup has unexpected live transaction paths for "${journal.name}".`,
+          4,
+        );
+      }
+      if (
+        (record.treeHash === journal.newTreeHash &&
+          managedHash !== journal.newTreeHash) ||
+        (record.treeHash !== journal.newTreeHash &&
+          record.treeHash !== journal.oldTreeHash) ||
+        (record.treeHash === journal.oldTreeHash &&
+          managedHash === journal.newTreeHash) ||
+        managedHash === undefined
+      ) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Authorized managed update cleanup lost its canonical tree for "${journal.name}".`,
+          4,
+        );
+      }
+      await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
+      await unlink(journalPath);
+      return record.treeHash === journal.newTreeHash
+        ? "committed"
+        : "rolled-back";
+    }
+
+    let stageHash = await this.#journalTreeHash(
+      journal.stagePath,
+      "Managed update stage",
+    );
+    let discardHash = await this.#journalTreeHash(
+      discardPath,
+      "Managed update discard",
+    );
+    if (record.treeHash === journal.newTreeHash) {
+      if (managedHash !== journal.newTreeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Committed managed update is unavailable or drifted for "${journal.name}".`,
+          4,
+        );
+      }
+      if (backupHash !== undefined && backupHash !== journal.oldTreeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update backup drifted for "${journal.name}".`,
+          4,
+        );
+      }
+      if (stageHash !== undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Committed managed update still has a staging tree for "${journal.name}".`,
+          4,
+        );
+      }
+      if (backupHash !== undefined && discardHash !== undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Committed managed update has both backup and discard trees for "${journal.name}".`,
+          4,
+        );
+      }
+      if (backupHash !== undefined) {
+        await this.#moveVerifiedJournalTree(
+          journal.backupPath,
+          discardPath,
+          journal.oldTreeHash,
+          "Managed update backup",
+        );
+        await this.#advanceJournal(journal, "commit-discarded");
+        discardHash = journal.oldTreeHash;
+      }
+      if (discardHash !== undefined && discardHash !== journal.oldTreeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update discard drifted for "${journal.name}".`,
+          4,
+        );
+      }
+      if (discardHash !== undefined) {
+        await this.#advanceJournal(journal, "cleanup-authorized");
+        await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
+      }
+      await unlink(journalPath);
+      return "committed";
+    }
+    if (record.treeHash !== journal.oldTreeHash) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed record changed during update recovery for "${journal.name}".`,
+        4,
+      );
+    }
+    let restoredHash = managedHash;
+    if (managedHash === journal.oldTreeHash) {
+      if (backupHash !== undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update has both a live old tree and a backup for "${journal.name}".`,
+          4,
+        );
+      }
+    } else if (managedHash === journal.newTreeHash) {
+      if (backupHash === undefined || discardHash !== undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update cannot preserve both trees for "${journal.name}".`,
+          4,
+        );
+      }
+      await this.#moveVerifiedJournalTree(
+        journal.managedPath,
+        discardPath,
+        journal.newTreeHash,
+        "Uncommitted managed update",
+      );
+      await this.#advanceJournal(journal, "rollback-discarded");
+      await rename(journal.backupPath, journal.managedPath);
+      restoredHash = await this.#journalTreeHash(
+        journal.managedPath,
+        "Restored managed tree",
+      );
+    } else if (managedHash === undefined) {
+      if (backupHash === undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update cannot restore a missing canonical tree for "${journal.name}".`,
+          4,
+        );
+      }
+      await rename(journal.backupPath, journal.managedPath);
+      restoredHash = await this.#journalTreeHash(
+        journal.managedPath,
+        "Restored managed tree",
+      );
+    } else {
+      if (backupHash !== undefined) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update has both a drifted canonical tree and a backup for "${journal.name}".`,
+          4,
+        );
+      }
+    }
+
+    if (stageHash !== undefined && discardHash !== undefined) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed update has both staging and discard trees for "${journal.name}".`,
+        4,
+      );
+    }
+    if (stageHash !== undefined) {
+      if (stageHash !== journal.newTreeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update stage drifted for "${journal.name}".`,
+          4,
+        );
+      }
+      await this.#moveVerifiedJournalTree(
+        journal.stagePath,
+        discardPath,
+        journal.newTreeHash,
+        "Managed update stage",
+      );
+      discardHash = journal.newTreeHash;
+      stageHash = undefined;
+    }
+    if (discardHash !== undefined && discardHash !== journal.newTreeHash) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed update discard drifted for "${journal.name}".`,
+        4,
+      );
+    }
+    if (restoredHash === undefined) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed update rollback lost the canonical tree for "${journal.name}".`,
+        4,
+      );
+    }
+    if (discardHash !== undefined) {
+      await this.#advanceJournal(journal, "rollback-restored");
+      await this.#advanceJournal(journal, "cleanup-authorized");
+      await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
+    }
+    await unlink(journalPath);
+    return "rolled-back";
   }
 
   async #removeIncompleteManaged(journal: ArchiveJournal): Promise<void> {
@@ -399,9 +961,10 @@ class StashLifecycleImplementation implements StashLifecycle {
       "managed-committed",
       "source-tombstoned",
       "archive-committed",
+      "cleanup-authorized",
     ]);
     if (
-      journal.schemaVersion !== 1 ||
+      journal.schemaVersion !== 2 ||
       !/^[0-9a-f-]{36}$/iu.test(journal.operationId) ||
       !stages.has(journal.stage) ||
       !NAME_PATTERN.test(journal.name) ||
@@ -423,12 +986,13 @@ class StashLifecycleImplementation implements StashLifecycle {
     }
     const expectedManagedPath = path.join(this.#managedRoot, journal.name);
     const expectedTombstoneParent = path.dirname(path.dirname(journal.source));
+    const expectedTombstone = path.join(
+      expectedTombstoneParent,
+      `.stash-archive-${journal.name}-${journal.operationId}`,
+    );
     if (
       !samePath(journal.managedPath, expectedManagedPath) ||
-      !samePath(path.dirname(journal.tombstone), expectedTombstoneParent) ||
-      !path.basename(journal.tombstone).startsWith(
-        `.stash-archive-${journal.name}-`,
-      ) ||
+      !samePath(journal.tombstone, expectedTombstone) ||
       isPathInside(this.#managedRoot, journal.source) ||
       isPathInside(this.#managedRoot, journal.tombstone)
     ) {
@@ -446,6 +1010,16 @@ class StashLifecycleImplementation implements StashLifecycle {
   ): Promise<void> {
     const sourceType = await pathType(journal.source);
     const tombstoneType = await pathType(journal.tombstone);
+    if (journal.stage === "cleanup-authorized") {
+      const currentType = await pathType(journal.tombstone);
+      if (currentType === "directory") {
+        await rm(journal.tombstone, { recursive: true, force: true });
+      } else if (currentType !== "missing") {
+        await unlink(journal.tombstone);
+      }
+      await unlink(journalPath);
+      return;
+    }
     if (journal.stage === "archive-committed") {
       if (tombstoneType !== "missing") {
         if (tombstoneType !== "directory") {
@@ -463,7 +1037,8 @@ class StashLifecycleImplementation implements StashLifecycle {
             4,
           );
         }
-        await rm(journal.tombstone, { recursive: true, force: false });
+        await this.#advanceJournal(journal, "cleanup-authorized");
+        await rm(journal.tombstone, { recursive: true, force: true });
       }
       await unlink(journalPath);
       return;
@@ -508,9 +1083,14 @@ class StashLifecycleImplementation implements StashLifecycle {
       .sort((left, right) => left.localeCompare(right, "en"));
     for (const file of files) {
       const journalPath = path.join(journalRoot, file);
-      let journal: ArchiveJournal;
+      let journal: LifecycleJournal;
       try {
-        journal = JSON.parse(await readFile(journalPath, "utf8")) as ArchiveJournal;
+        if ((await pathType(journalPath)) !== "file") {
+          throw new Error("journal is not a real file");
+        }
+        journal = JSON.parse(
+          await readFile(journalPath, "utf8"),
+        ) as LifecycleJournal;
       } catch (error) {
         throw new StashError(
           "invalid-lifecycle-journal",
@@ -518,16 +1098,26 @@ class StashLifecycleImplementation implements StashLifecycle {
           5,
         );
       }
-      this.#validateArchiveJournal(journal, journalPath);
-      await this.#recoverArchiveJournal(journal, journalPath);
+      if ("kind" in journal && journal.kind === "managed-update") {
+        this.#validateUpdateJournal(journal, journalPath);
+        await this.#recoverUpdateJournal(journal, journalPath);
+      } else {
+        const archiveJournal = journal as ArchiveJournal;
+        this.#validateArchiveJournal(archiveJournal, journalPath);
+        await this.#recoverArchiveJournal(archiveJournal, journalPath);
+      }
     }
   }
 
   async #readLockOwner(lockPath: string): Promise<LifecycleLockOwner> {
     let owner: LifecycleLockOwner;
     try {
+      const ownerPath = path.join(lockPath, "owner.json");
+      if ((await pathType(ownerPath)) !== "file") {
+        throw new Error("lock owner is not a real file");
+      }
       owner = JSON.parse(
-        await readFile(path.join(lockPath, "owner.json"), "utf8"),
+        await readFile(ownerPath, "utf8"),
       ) as LifecycleLockOwner;
     } catch (error) {
       throw new StashError(
@@ -698,6 +1288,7 @@ class StashLifecycleImplementation implements StashLifecycle {
     const lockPath = path.join(this.#metadataRoot(), "lifecycle.lock");
     const owner = await this.#acquireLock(lockPath);
     try {
+      await this.#assertManagedLayout();
       await this.#recoverJournals();
       return await operation();
     } finally {
@@ -706,15 +1297,38 @@ class StashLifecycleImplementation implements StashLifecycle {
   }
 
   async #readRecord(name: string): Promise<ManagedSkillRecord | undefined> {
+    if (!NAME_PATTERN.test(name)) {
+      throw new StashError(
+        "invalid-argument",
+        `Invalid managed skill name "${name}".`,
+        2,
+      );
+    }
     const recordPath = this.#recordPath(name);
     try {
+      const type = await pathType(recordPath);
+      if (type === "missing") {
+        return undefined;
+      }
+      if (type !== "file") {
+        throw new Error("lifecycle record is not a real file");
+      }
       const parsed = JSON.parse(await readFile(recordPath, "utf8")) as ManagedSkillRecord;
       if (
         parsed.schemaVersion !== STORE_SCHEMA_VERSION ||
         typeof parsed.skillId !== "string" ||
         parsed.skillId.length === 0 ||
         parsed.name !== name ||
-        typeof parsed.treeHash !== "string" ||
+        !/^sha256:[0-9a-f]{64}$/iu.test(parsed.treeHash) ||
+        !parsed.source ||
+        (parsed.source.kind !== "local-import" &&
+          parsed.source.kind !== "standalone-archive") ||
+        typeof parsed.source.location !== "string" ||
+        !path.isAbsolute(parsed.source.location) ||
+        typeof parsed.source.importedAt !== "string" ||
+        (parsed.source.updatedAt !== undefined &&
+          typeof parsed.source.updatedAt !== "string") ||
+        !validStoredRemoteProvenance(parsed.source) ||
         !Array.isArray(parsed.deployments) ||
         parsed.deployments.some(
           (deployment) =>
@@ -748,6 +1362,14 @@ class StashLifecycleImplementation implements StashLifecycle {
 
   async #writeRecord(record: ManagedSkillRecord): Promise<void> {
     const finalPath = this.#recordPath(record.name);
+    const finalType = await pathType(finalPath);
+    if (finalType !== "missing" && finalType !== "file") {
+      throw new StashError(
+        "unsafe-managed-layout",
+        `Lifecycle record target is not a real file: "${finalPath}".`,
+        3,
+      );
+    }
     const temporaryPath = `${finalPath}.${randomUUID()}.tmp`;
     await writeFile(temporaryPath, `${JSON.stringify(record, null, 2)}\n`, {
       encoding: "utf8",
@@ -758,6 +1380,28 @@ class StashLifecycleImplementation implements StashLifecycle {
     } catch (error) {
       await unlink(temporaryPath).catch(() => undefined);
       throw error;
+    }
+  }
+
+  async #assertUpdateCommitBoundary(
+    record: ManagedSkillRecord,
+    managedPath: string,
+  ): Promise<void> {
+    const commitRecord = await this.#readRecord(record.name);
+    if (!commitRecord || !isDeepStrictEqual(commitRecord, record)) {
+      throw new StashError(
+        "managed-version-conflict",
+        `Managed metadata changed before the update for "${record.name}" could commit.`,
+        3,
+      );
+    }
+    const commitSnapshot = await snapshotTree(managedPath);
+    if (commitSnapshot.treeHash !== record.treeHash) {
+      throw new StashError(
+        "managed-drift",
+        `Managed skill "${record.name}" changed before its update could commit.`,
+        3,
+      );
     }
   }
 
@@ -774,6 +1418,76 @@ class StashLifecycleImplementation implements StashLifecycle {
         3,
       );
     }
+  }
+
+  #sourceProvenance(
+    sourceUrl?: string,
+    revision?: string,
+    repositoryPath?: string,
+    trackingRef?: string,
+  ): {
+    sourceUrl?: string;
+    revision?: string;
+    repositoryPath?: string;
+    trackingRef?: string;
+  } {
+    const requestedUrl = sourceUrl?.trim() || undefined;
+    const requestedRevision = revision?.trim() || undefined;
+    const requestedPath = repositoryPath || undefined;
+    const requestedTrackingRef = trackingRef || undefined;
+    const canonicalUrl = requestedUrl
+      ? canonicalLifecycleSourceUrl(requestedUrl)
+      : undefined;
+    if (requestedUrl && !canonicalUrl) {
+      throw new StashError(
+        "invalid-argument",
+        "--source-url must be an absolute HTTP(S), SSH, or Git repository URL without HTTP credentials, a password, query, or fragment.",
+        2,
+      );
+    }
+    const canonicalPath = requestedPath
+      ? canonicalRepositoryPath(requestedPath)
+      : undefined;
+    if (requestedPath && !canonicalPath) {
+      throw new StashError(
+        "invalid-argument",
+        "--repository-path must be an exact, portable repository-relative skill directory using forward slashes.",
+        2,
+      );
+    }
+    if (canonicalPath && (!canonicalUrl || !requestedRevision)) {
+      throw new StashError(
+        "invalid-argument",
+        "--repository-path requires --source-url and an immutable --revision.",
+        2,
+      );
+    }
+    const canonicalRevision = requestedRevision
+      ? canonicalImmutableRevision(requestedRevision)
+      : undefined;
+    if (requestedRevision && !canonicalRevision) {
+      throw new StashError(
+        "invalid-argument",
+        "--revision must be a full 40- or 64-hex Git commit object ID when recording remote provenance.",
+        2,
+      );
+    }
+    const canonicalRef = requestedTrackingRef
+      ? canonicalTrackingRef(requestedTrackingRef)
+      : undefined;
+    if (requestedTrackingRef && !canonicalRef) {
+      throw new StashError(
+        "invalid-argument",
+        "--tracking-ref must be HEAD or a fully qualified refs/heads/... or refs/tags/... Git ref.",
+        2,
+      );
+    }
+    return {
+      ...(canonicalUrl ? { sourceUrl: canonicalUrl } : {}),
+      ...(canonicalRevision ? { revision: canonicalRevision } : {}),
+      ...(canonicalPath ? { repositoryPath: canonicalPath } : {}),
+      ...(canonicalRef ? { trackingRef: canonicalRef } : {}),
+    };
   }
 
   async #canonicalHostRoot(
@@ -804,6 +1518,8 @@ class StashLifecycleImplementation implements StashLifecycle {
     kind: ManagedSkillRecord["source"]["kind"],
     sourceUrl?: string,
     revision?: string,
+    repositoryPath?: string,
+    trackingRef?: string,
     expectedTreeHash?: string,
   ): Promise<StoredSource> {
     await this.#assertSourceBoundary(source);
@@ -816,6 +1532,28 @@ class StashLifecycleImplementation implements StashLifecycle {
       );
     }
     const metadata = parseSkillMetadata(snapshot);
+    const provenance = this.#sourceProvenance(
+      sourceUrl,
+      revision,
+      repositoryPath,
+      trackingRef,
+    );
+    if (
+      (provenance.sourceUrl ||
+        provenance.revision ||
+        provenance.repositoryPath ||
+        provenance.trackingRef) &&
+      (!provenance.sourceUrl ||
+        !provenance.revision ||
+        !provenance.repositoryPath ||
+        !provenance.trackingRef)
+    ) {
+      throw new StashError(
+        "invalid-argument",
+        "install and archive require --source-url, a full immutable --revision, --repository-path, and --tracking-ref together when recording remote provenance.",
+        2,
+      );
+    }
     const managedPath = path.join(this.#managedRoot, metadata.name);
     const existingType = await pathType(managedPath);
     if (existingType !== "missing") {
@@ -875,8 +1613,14 @@ class StashLifecycleImplementation implements StashLifecycle {
           kind,
           location: snapshot.root,
           importedAt: timestamp,
-          ...(sourceUrl ? { url: sourceUrl } : {}),
-          ...(revision ? { revision } : {}),
+          ...(provenance.sourceUrl ? { url: provenance.sourceUrl } : {}),
+          ...(provenance.revision ? { revision: provenance.revision } : {}),
+          ...(provenance.repositoryPath
+            ? { repositoryPath: provenance.repositoryPath }
+            : {}),
+          ...(provenance.trackingRef
+            ? { trackingRef: provenance.trackingRef }
+            : {}),
         },
         compatibility: metadata.compatibility,
         deployments: [],
@@ -909,6 +1653,8 @@ class StashLifecycleImplementation implements StashLifecycle {
         "local-import",
         request.sourceUrl,
         request.revision,
+        request.repositoryPath,
+        request.trackingRef,
       );
       return {
         status: stored.created ? "stored" : "already-stored",
@@ -917,6 +1663,394 @@ class StashLifecycleImplementation implements StashLifecycle {
         managedPath: stored.managedPath,
         treeHash: stored.record.treeHash,
       };
+    });
+  }
+
+  async update(
+    request: LifecycleUpdateRequest,
+  ): Promise<LifecycleMutationResult> {
+    return this.#withLock(async () => {
+      if (!/^sha256:[0-9a-f]{64}$/iu.test(request.expectedTreeHash)) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --expected-tree-hash from the current managed status.",
+          2,
+        );
+      }
+      const source = path.resolve(request.source);
+      await this.#assertSourceBoundary(source);
+      const snapshot = await snapshotTree(source);
+      const metadata = parseSkillMetadata(snapshot);
+      const managedPath = path.join(this.#managedRoot, metadata.name);
+      const record = await this.#readRecord(metadata.name);
+      if (!record) {
+        throw new StashError(
+          "managed-skill-not-found",
+          `Managed skill "${metadata.name}" was not found; install it before updating.`,
+          4,
+        );
+      }
+      if (record.treeHash !== request.expectedTreeHash) {
+        throw new StashError(
+          "managed-version-conflict",
+          `Managed skill "${metadata.name}" changed since it was inspected.`,
+          3,
+        );
+      }
+      const currentRevision = record.source.revision;
+      if (currentRevision !== undefined) {
+        if (!request.expectedRevision) {
+          throw new StashError(
+            "invalid-argument",
+            "update requires --expected-revision when the managed source has a recorded revision.",
+            2,
+          );
+        }
+        if (request.expectedRevision !== currentRevision) {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed source revision changed for "${metadata.name}".`,
+            3,
+          );
+        }
+      } else if (request.expectedRevision !== undefined) {
+        throw new StashError(
+          "managed-version-conflict",
+          `Managed skill "${metadata.name}" has no recorded revision.`,
+          3,
+        );
+      }
+      const managedType = await pathType(managedPath);
+      if (managedType !== "directory") {
+        throw new StashError(
+          "managed-drift",
+          `Managed skill "${metadata.name}" is unavailable or not a real directory.`,
+          3,
+        );
+      }
+      const managedSnapshot = await snapshotTree(managedPath);
+      if (managedSnapshot.treeHash !== record.treeHash) {
+        throw new StashError(
+          "managed-drift",
+          `Managed skill "${metadata.name}" no longer matches its recorded hash.`,
+          3,
+        );
+      }
+      const requestedProvenance = this.#sourceProvenance(
+        request.sourceUrl,
+        request.revision,
+        request.repositoryPath,
+        request.trackingRef,
+      );
+      const currentSourceUrl = record.source.url;
+      const currentRepositoryPath = record.source.repositoryPath;
+      const currentTrackingRef = record.source.trackingRef;
+      const requestedSourceUrl = requestedProvenance.sourceUrl;
+      const requestedRevision = requestedProvenance.revision;
+      const requestedRepositoryPath = requestedProvenance.repositoryPath;
+      const requestedTrackingRef = requestedProvenance.trackingRef;
+      if (
+        !currentSourceUrl &&
+        (requestedSourceUrl ||
+          requestedRevision ||
+          requestedRepositoryPath ||
+          requestedTrackingRef) &&
+        (!requestedSourceUrl ||
+          !requestedRevision ||
+          !requestedRepositoryPath ||
+          !requestedTrackingRef)
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "Introducing remote provenance requires --source-url, a full immutable --revision, --repository-path, and --tracking-ref together.",
+          2,
+        );
+      }
+      if (
+        requestedSourceUrl &&
+        currentSourceUrl &&
+        requestedSourceUrl !== currentSourceUrl
+      ) {
+        throw new StashError(
+          "source-mismatch",
+          `Update source URL does not match the managed provenance for "${metadata.name}".`,
+          3,
+        );
+      }
+      if (
+        requestedRepositoryPath &&
+        currentRepositoryPath &&
+        requestedRepositoryPath !== currentRepositoryPath
+      ) {
+        throw new StashError(
+          "source-mismatch",
+          `Update repository path does not match the managed provenance for "${metadata.name}".`,
+          3,
+        );
+      }
+      if (
+        requestedTrackingRef &&
+        currentTrackingRef &&
+        requestedTrackingRef !== currentTrackingRef
+      ) {
+        throw new StashError(
+          "source-mismatch",
+          `Update tracking ref does not match the managed provenance for "${metadata.name}".`,
+          3,
+        );
+      }
+      const provenanceWillChange =
+        snapshot.treeHash !== record.treeHash ||
+        (requestedRevision !== undefined &&
+          requestedRevision !== currentRevision) ||
+        (requestedRepositoryPath !== undefined &&
+          requestedRepositoryPath !== currentRepositoryPath) ||
+        (requestedTrackingRef !== undefined &&
+          requestedTrackingRef !== currentTrackingRef);
+      if (
+        currentSourceUrl &&
+        provenanceWillChange &&
+        !requestedSourceUrl
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --source-url when changing content, revision, repository path, or tracking ref with recorded remote provenance.",
+          2,
+        );
+      }
+      const effectiveSourceUrl = requestedSourceUrl ?? currentSourceUrl;
+      if (
+        snapshot.treeHash !== record.treeHash &&
+        (effectiveSourceUrl || currentRevision !== undefined) &&
+        !requestedRevision
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires --revision when replacing content with recorded remote provenance.",
+          2,
+        );
+      }
+      if (
+        snapshot.treeHash !== record.treeHash &&
+        currentRevision !== undefined &&
+        requestedRevision === currentRevision
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires a new immutable --revision when remote content changes.",
+          2,
+        );
+      }
+      const effectiveRevision = requestedRevision ?? currentRevision;
+      const effectiveRepositoryPath =
+        requestedRepositoryPath ?? currentRepositoryPath;
+      const effectiveTrackingRef =
+        requestedTrackingRef ?? currentTrackingRef;
+      if (
+        [
+          effectiveSourceUrl,
+          effectiveRevision,
+          effectiveRepositoryPath,
+          effectiveTrackingRef,
+        ].some((value) => value !== undefined) &&
+        (!effectiveSourceUrl ||
+          !effectiveRevision ||
+          !effectiveRepositoryPath ||
+          !effectiveTrackingRef)
+      ) {
+        throw new StashError(
+          "invalid-argument",
+          "update requires complete remote provenance: source URL, immutable revision, repository path, and tracking ref.",
+          2,
+        );
+      }
+      const timestamp = new Date(this.#now()).toISOString();
+      const updatedRecord: ManagedSkillRecord = {
+        ...record,
+        treeHash: snapshot.treeHash,
+        source: {
+          ...record.source,
+          location: snapshot.root,
+          ...(effectiveSourceUrl ? { url: effectiveSourceUrl } : {}),
+          ...(effectiveRevision ? { revision: effectiveRevision } : {}),
+          ...(effectiveRepositoryPath
+            ? { repositoryPath: effectiveRepositoryPath }
+            : {}),
+          ...(effectiveTrackingRef ? { trackingRef: effectiveTrackingRef } : {}),
+          updatedAt: timestamp,
+        },
+        compatibility: metadata.compatibility,
+        lastValidatedAt: timestamp,
+        lastUpdatedAt: timestamp,
+      };
+      const resultFor = (
+        status: "updated" | "metadata-updated" | "already-current",
+        warning?: string,
+      ): LifecycleMutationResult => {
+        const outdatedDeployments = updatedRecord.deployments.filter(
+          (deployment) => deployment.treeHash !== updatedRecord.treeHash,
+        );
+        return {
+          status,
+          name: updatedRecord.name,
+          skillId: updatedRecord.skillId,
+          managedPath,
+          previousTreeHash: record.treeHash,
+          treeHash: updatedRecord.treeHash,
+          ...(currentRevision ? { previousRevision: currentRevision } : {}),
+          ...(effectiveRevision ? { revision: effectiveRevision } : {}),
+          deploymentsPreserved: updatedRecord.deployments.length,
+          outdatedDeployments: outdatedDeployments.length,
+          ...(warning ? { warning } : {}),
+        };
+      };
+      if (snapshot.treeHash === record.treeHash) {
+        await this.#assertUpdateCommitBoundary(record, managedPath);
+        const sourceUrlChanged =
+          requestedSourceUrl !== undefined &&
+          requestedSourceUrl !== currentSourceUrl;
+        const revisionChanged =
+          requestedRevision !== undefined &&
+          requestedRevision !== currentRevision;
+        const repositoryPathChanged =
+          requestedRepositoryPath !== undefined &&
+          requestedRepositoryPath !== currentRepositoryPath;
+        const trackingRefChanged =
+          requestedTrackingRef !== undefined &&
+          requestedTrackingRef !== currentTrackingRef;
+        if (
+          !sourceUrlChanged &&
+          !revisionChanged &&
+          !repositoryPathChanged &&
+          !trackingRefChanged
+        ) {
+          return resultFor("already-current");
+        }
+        await this.#writeRecord(updatedRecord);
+        return resultFor("metadata-updated");
+      }
+
+      const operationId = randomUUID();
+      const stagePath = path.join(
+        this.#metadataRoot(),
+        "staging",
+        `update-${operationId}-next`,
+      );
+      const backupPath = path.join(
+        this.#metadataRoot(),
+        "staging",
+        `update-${operationId}-previous`,
+      );
+      const discardPath = path.join(
+        this.#metadataRoot(),
+        "staging",
+        `update-${operationId}-discard`,
+      );
+      const journal: ManagedUpdateJournal = {
+        schemaVersion: 1,
+        kind: "managed-update",
+        operationId,
+        stage: "staging",
+        name: record.name,
+        skillId: record.skillId,
+        oldTreeHash: record.treeHash,
+        newTreeHash: snapshot.treeHash,
+        managedPath,
+        stagePath,
+        backupPath,
+        discardPath,
+        createdAt: timestamp,
+      };
+      await this.#writeJournal(journal);
+      try {
+        await copySnapshot(snapshot, stagePath);
+        const stagedSnapshot = await snapshotTree(stagePath);
+        if (stagedSnapshot.treeHash !== snapshot.treeHash) {
+          throw new StashError(
+            "copy-verification-failed",
+            `Update staging verification failed for "${metadata.name}".`,
+            4,
+          );
+        }
+        await this.#advanceJournal(journal, "stage-ready");
+        await this.#assertUpdateCommitBoundary(record, managedPath);
+        await rename(managedPath, backupPath);
+        const backupSnapshot = await snapshotTree(backupPath);
+        if (backupSnapshot.treeHash !== record.treeHash) {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill "${metadata.name}" changed while it was being replaced.`,
+            3,
+          );
+        }
+        await this.#advanceJournal(journal, "old-tombstoned");
+        await rename(stagePath, managedPath);
+        await this.#advanceJournal(journal, "new-committed");
+        const committedSnapshot = await snapshotTree(managedPath);
+        if (committedSnapshot.treeHash !== snapshot.treeHash) {
+          throw new StashError(
+            "copy-verification-failed",
+            `Committed update verification failed for "${metadata.name}".`,
+            4,
+          );
+        }
+        await this.#writeRecord(updatedRecord);
+      } catch (error) {
+        const recovery = await this.#recoverUpdateJournal(
+          journal,
+          this.#journalPath(journal.operationId),
+        );
+        if (recovery === "committed") {
+          return resultFor(
+            "updated",
+            `Update committed and was recovered after a bookkeeping error: ${String(error)}`,
+          );
+        }
+        throw error;
+      }
+
+      let warning: string | undefined;
+      try {
+        await this.#advanceJournal(journal, "record-committed");
+      } catch (error) {
+        warning = `Update committed, but its recovery journal remains for later cleanup: ${String(error)}`;
+      }
+      if (!warning) {
+        try {
+          await this.#moveVerifiedJournalTree(
+            backupPath,
+            discardPath,
+            record.treeHash,
+            "Managed update backup",
+          );
+          await this.#advanceJournal(journal, "commit-discarded");
+          await this.#advanceJournal(journal, "cleanup-authorized");
+          await this.#removeAuthorizedUpdateTree(
+            journal,
+            discardPath,
+            "cleanup",
+          );
+        } catch (error) {
+          warning = `Update committed, but previous-tree cleanup remains for recovery: ${String(error)}`;
+        }
+      }
+      if (!warning) {
+        try {
+          await unlink(this.#journalPath(journal.operationId));
+        } catch (error) {
+          warning = `Update committed, but its recovery journal remains for later cleanup: ${String(error)}`;
+        }
+      }
+      if (
+        !warning &&
+        updatedRecord.deployments.some(
+          (deployment) => deployment.treeHash !== updatedRecord.treeHash,
+        )
+      ) {
+        warning =
+          "Managed copy updated; tracked deployments remain unchanged and must be deactivated then activated explicitly to receive the new tree.";
+      }
+      return resultFor("updated", warning);
     });
   }
 
@@ -975,8 +2109,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         const managedSnapshot = await snapshotTree(managedPath);
         if (
           managedSnapshot.treeHash !== existingRecord.treeHash ||
-          sourceSnapshot.treeHash !== existingRecord.treeHash ||
-          trackedDeployment.treeHash !== existingRecord.treeHash
+          sourceSnapshot.treeHash !== trackedDeployment.treeHash
         ) {
           throw new StashError(
             "managed-drift",
@@ -994,13 +2127,14 @@ class StashLifecycleImplementation implements StashLifecycle {
         managedType !== "missing" || existingRecord !== undefined;
       const tombstoneParent = path.dirname(resolvedTarget.root);
       await mkdir(tombstoneParent, { recursive: true });
+      const operationId = randomUUID();
       const tombstone = path.join(
         tombstoneParent,
-        `.stash-archive-${metadata.name}-${randomUUID()}`,
+        `.stash-archive-${metadata.name}-${operationId}`,
       );
       const journal: ArchiveJournal = {
-        schemaVersion: 1,
-        operationId: randomUUID(),
+        schemaVersion: 2,
+        operationId,
         stage: "started",
         source,
         tombstone,
@@ -1017,6 +2151,8 @@ class StashLifecycleImplementation implements StashLifecycle {
           "standalone-archive",
           request.sourceUrl,
           request.revision,
+          request.repositoryPath,
+          request.trackingRef,
           journal.treeHash,
         );
         if (
@@ -1030,9 +2166,9 @@ class StashLifecycleImplementation implements StashLifecycle {
             4,
           );
         }
-        await this.#advanceArchiveJournal(journal, "managed-committed");
+        await this.#advanceJournal(journal, "managed-committed");
         await rename(source, tombstone);
-        await this.#advanceArchiveJournal(journal, "source-tombstoned");
+        await this.#advanceJournal(journal, "source-tombstoned");
         const movedSnapshot = await snapshotTree(tombstone);
         if (movedSnapshot.treeHash !== stored.record.treeHash) {
           throw new StashError(
@@ -1041,10 +2177,11 @@ class StashLifecycleImplementation implements StashLifecycle {
             4,
           );
         }
-        await this.#advanceArchiveJournal(journal, "archive-committed");
+        await this.#advanceJournal(journal, "archive-committed");
         let warning: string | undefined;
         try {
-          await rm(tombstone, { recursive: true, force: false });
+          await this.#advanceJournal(journal, "cleanup-authorized");
+          await rm(tombstone, { recursive: true, force: true });
         } catch (error) {
           warning = `The skill is outside host discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
         }
@@ -1323,8 +2460,11 @@ class StashLifecycleImplementation implements StashLifecycle {
   ): Promise<LifecycleStatusResult> {
     const recordsRoot = path.join(this.#metadataRoot(), "records");
     let names: string[];
+    const hasRecordsRoot = await this.#hasSafeRecordsRoot();
     if (request.name) {
-      names = [request.name];
+      names = hasRecordsRoot ? [request.name] : [];
+    } else if (!hasRecordsRoot) {
+      names = [];
     } else {
       try {
         names = (await readdir(recordsRoot))
@@ -1368,12 +2508,14 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       const deployments: LifecycleSkillStatus["deployments"] = [];
       for (const deployment of record.deployments) {
+        const current = deployment.treeHash === record.treeHash;
         const type = await pathType(deployment.path);
         if (type === "missing") {
           deployments.push({
             ...deployment,
             state: "missing",
             integrity: "unknown",
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "absent",
@@ -1387,6 +2529,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             ...deployment,
             state: "drifted",
             integrity: "drifted",
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
@@ -1403,6 +2546,7 @@ class StashLifecycleImplementation implements StashLifecycle {
               deployedHash === deployment.treeHash ? "deployed" : "drifted",
             integrity:
               deployedHash === deployment.treeHash ? "verified" : "drifted",
+            current,
             actualTreeHash: deployedHash,
             hostObservation: {
               override: "unknown",
@@ -1415,6 +2559,7 @@ class StashLifecycleImplementation implements StashLifecycle {
             ...deployment,
             state: "drifted",
             integrity: "unknown",
+            current,
             hostObservation: {
               override: "unknown",
               discovery: "unknown",
@@ -1434,6 +2579,9 @@ class StashLifecycleImplementation implements StashLifecycle {
           ...(actualTreeHash ? { actualTreeHash } : {}),
         },
         source: record.source,
+        outdatedDeployments: deployments.filter(
+          (deployment) => !deployment.current,
+        ).length,
         deployments,
       });
     }

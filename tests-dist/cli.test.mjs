@@ -65,6 +65,7 @@ source:
 test("bundled skill CLI installs, resolves, deploys, and deactivates a managed skill", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-lifecycle-dist-test-"));
   const source = path.join(temp, "source", "rare-skill");
+  const replacement = path.join(temp, "replacement", "rare-skill");
   const managedRoot = path.join(temp, "managed");
   const sandboxHome = path.join(temp, "home");
   const hostRoot = path.join(sandboxHome, ".agents", "skills");
@@ -79,6 +80,12 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
     "---\nname: rare-skill\ndescription: A bundled lifecycle fixture.\n---\n\n# Rare\n",
     "utf8",
   );
+  await mkdir(replacement, { recursive: true });
+  await writeFile(
+    path.join(replacement, "SKILL.md"),
+    "---\nname: rare-skill\ndescription: An updated bundled lifecycle fixture.\n---\n\n# Rare updated\n",
+    "utf8",
+  );
   const common = ["--managed-root", managedRoot, "--json"];
   const installed = JSON.parse(
     (
@@ -86,11 +93,59 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
         bundledCli,
         "install",
         source,
+        "--source-url",
+        "https://github.com/example/skills",
+        "--revision",
+        "1".repeat(40),
+        "--repository-path",
+        "skills/rare-skill",
+        "--tracking-ref",
+        "refs/heads/main",
         ...common,
       ], { env: cliEnvironment })
     ).stdout,
   );
   assert.equal(installed.status, "stored");
+
+  const updated = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "update",
+        replacement,
+        "--expected-tree-hash",
+        installed.treeHash,
+        "--expected-revision",
+        "1".repeat(40),
+        "--source-url",
+        "https://github.com/example/skills",
+        "--revision",
+        "2".repeat(40),
+        "--repository-path",
+        "skills/rare-skill",
+        "--tracking-ref",
+        "refs/heads/main",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(updated.status, "updated");
+  assert.equal(updated.skillId, installed.skillId);
+  const lifecycleStatus = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "status",
+        "rare-skill",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(
+    lifecycleStatus.skills[0].source.repositoryPath,
+    "skills/rare-skill",
+  );
+  assert.equal(lifecycleStatus.skills[0].source.trackingRef, "refs/heads/main");
 
   const resolved = JSON.parse(
     (
@@ -245,7 +300,14 @@ test("npm package entrypoints match the compiled layout", async () => {
   const { stdout } = await execFileAsync(process.execPath, [cli, "help"]);
   assert.match(stdout, /stash exact <name>/u);
   assert.match(stdout, /stash install <local-skill-dir>/u);
+  assert.match(stdout, /stash update <local-skill-dir>/u);
   assert.match(stdout, /--source <id\|name\|url>/u);
+
+  const { stdout: flagHelp } = await execFileAsync(process.execPath, [
+    cli,
+    "--help",
+  ]);
+  assert.equal(flagHelp, stdout);
 });
 
 test("distribution metadata uses one Stash identity and version", async () => {
@@ -329,8 +391,7 @@ test("vendor adapters contain only their documented invocation policy", async ()
     /^---\r?\n([\s\S]*?)\r?\n---/u.exec(claudeSkill)?.[1] ?? "",
   );
   assert.equal(claudeFrontmatter["disable-model-invocation"], true);
-  assert.match(claudeSkill, /explicitly invokes `\/stash:stash`/u);
-  assert.match(claudeSkill, /--source <source>/u);
+  assert.match(claudeFrontmatter.description, /\/stash:stash/u);
   assert.doesNotMatch(claudeSkill, /\$stash/u);
   await assert.rejects(
     access(
@@ -356,9 +417,8 @@ test("vendor adapters contain only their documented invocation policy", async ()
     path.join(antigravityCliRoot, "skills", "stash.md"),
     "utf8",
   );
-  assert.match(antigravityCliSkill, /explicitly invokes `\/stash`/u);
+  assert.match(antigravityCliSkill, /\/stash/u);
   assert.match(antigravityCliSkill, /\.\.\/scripts\/stash\.mjs/u);
-  assert.match(antigravityCliSkill, /--source <source>/u);
   assert.doesNotMatch(antigravityCliSkill, /\$stash/u);
   await access(
     path.join(

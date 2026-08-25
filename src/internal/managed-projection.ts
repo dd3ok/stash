@@ -1,6 +1,8 @@
 import {
+  lstat,
   readFile,
   readdir,
+  realpath,
 } from "node:fs/promises";
 import path from "node:path";
 import type {
@@ -9,8 +11,9 @@ import type {
   RelatedSkillCopy,
   SkillRecord,
 } from "../types.js";
+import { validStoredRemoteProvenance } from "./lifecycle-provenance.js";
 import { fingerprintTree } from "./tree-fingerprint.js";
-import { pathIdentity, sha256 } from "./util.js";
+import { isPathInside, pathIdentity, sha256 } from "./util.js";
 
 interface ProjectionTarget {
   kind: RelatedSkillCopy["kind"];
@@ -41,10 +44,7 @@ function validRecord(
     typeof record.source.location === "string" &&
     path.isAbsolute(record.source.location) &&
     typeof record.source.importedAt === "string" &&
-    (record.source.url === undefined ||
-      typeof record.source.url === "string") &&
-    (record.source.revision === undefined ||
-      typeof record.source.revision === "string") &&
+    validStoredRemoteProvenance(record.source) &&
     Array.isArray(record.deployments) &&
     record.deployments.every(
       (deployment) =>
@@ -122,12 +122,44 @@ export async function projectManagedCopies(
   }
 
   let recordFiles: string[];
-  const recordsRoot = path.join(managedRoot, ".stash", "records");
+  const metadataRoot = path.join(managedRoot, ".stash");
+  const recordsRoot = path.join(metadataRoot, "records");
   try {
+    const managedInfo = await lstat(managedRoot);
+    const metadataInfo = await lstat(metadataRoot);
+    if (
+      managedInfo.isSymbolicLink() ||
+      !managedInfo.isDirectory() ||
+      metadataInfo.isSymbolicLink() ||
+      !metadataInfo.isDirectory() ||
+      !isPathInside(await realpath(managedRoot), await realpath(metadataRoot))
+    ) {
+      throw new Error("unsafe managed metadata root");
+    }
+    const recordsInfo = await lstat(recordsRoot);
+    if (
+      recordsInfo.isSymbolicLink() ||
+      !recordsInfo.isDirectory() ||
+      !isPathInside(await realpath(managedRoot), await realpath(recordsRoot))
+    ) {
+      throw new Error("unsafe managed records root");
+    }
     recordFiles = (await readdir(recordsRoot))
       .filter((name) => name.endsWith(".json"))
       .sort((left, right) => left.localeCompare(right, "en"));
-  } catch {
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code === "ENOENT") {
+      return { indexes, fingerprintPart: "" };
+    }
+    managedIndex.warnings.push({
+      code: "invalid-managed-layout",
+      message: "Ignored lifecycle projection because its records root is missing or unsafe.",
+      path: ".stash/records",
+    });
     return { indexes, fingerprintPart: "" };
   }
 
@@ -135,8 +167,13 @@ export async function projectManagedCopies(
   const managedRecords = new Map<string, ManagedSkillRecord>();
   for (const file of recordFiles) {
     try {
+      const recordPath = path.join(recordsRoot, file);
+      const recordInfo = await lstat(recordPath);
+      if (recordInfo.isSymbolicLink() || !recordInfo.isFile()) {
+        throw new Error("record is not a real file");
+      }
       const parsed = JSON.parse(
-        await readFile(path.join(recordsRoot, file), "utf8"),
+        await readFile(recordPath, "utf8"),
       ) as unknown;
       const expectedName = file.slice(0, -".json".length);
       if (!validRecord(parsed, expectedName)) {
@@ -187,7 +224,7 @@ export async function projectManagedCopies(
           : {}),
       };
       events.push(
-        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}`,
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}`,
       );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }

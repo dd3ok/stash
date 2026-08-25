@@ -13,10 +13,20 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 - Managed imports reject symlinks, junctions, special files, non-portable path
   names, case-insensitive collisions, oversized trees, and overwrites.
 - Lifecycle copies are staged and tree-hash verified before atomic rename.
+- The managed metadata, records, staging, and journal roots must be real
+  directories contained by the resolved managed root; record and journal files
+  cannot be links.
 - Destructive operations apply only to explicitly selected standalone skills
   or recorded deployments. Untracked and drifted deployments are preserved.
 - Archive recovery is journaled. A rollback never overwrites an occupied source
   path, and a committed tombstone is deleted only after its tree hash matches.
+- Managed update recovery rechecks record/tree state at commit time, preserves a
+  drifted previous tree during rollback, and recursively removes only an exact
+  operation-owned path after journal authorization.
+- Remote managed provenance uses a canonical repository URL, caller-resolved
+  immutable revision, exact case-sensitive repository-relative skill path, and
+  exact `HEAD`, `refs/heads/...`, or `refs/tags/...` tracking ref. These four
+  fields are all present or all absent; partial stored provenance fails closed.
 - Deactivation requires matching Stash ownership, skill/deployment identity,
   target, and tree hash.
 - Catalog registration grants no write authority. Hash-matching related copies
@@ -45,6 +55,8 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 - `deployed` means present in a host discovery root; it does not prove that a
   host enable/disable override is enabled.
 - Plugin lifecycle and vendor setting changes are outside Stash lifecycle.
+- Recovery handles interrupted processes but does not promise durability across
+  power loss because Stash does not fsync journal, directory, and record writes.
 
 ## Catalog review
 

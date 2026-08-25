@@ -266,8 +266,11 @@ export interface LifecycleSource {
   kind: "local-import" | "standalone-archive";
   location: string;
   importedAt: string;
+  updatedAt?: string;
   url?: string;
   revision?: string;
+  repositoryPath?: string;
+  trackingRef?: string;
 }
 
 export interface LifecycleDeployment {
@@ -293,6 +296,7 @@ export interface ManagedSkillRecord {
   compatibility: VendorCompatibility;
   deployments: LifecycleDeployment[];
   lastValidatedAt: string;
+  lastUpdatedAt?: string;
 }
 
 export interface LifecycleHostTarget {
@@ -305,6 +309,18 @@ export interface LifecycleInstallRequest {
   source: string;
   sourceUrl?: string;
   revision?: string;
+  repositoryPath?: string;
+  trackingRef?: string;
+}
+
+export interface LifecycleUpdateRequest {
+  source: string;
+  expectedTreeHash: string;
+  expectedRevision?: string;
+  sourceUrl?: string;
+  revision?: string;
+  repositoryPath?: string;
+  trackingRef?: string;
 }
 
 export interface LifecycleArchiveRequest {
@@ -312,6 +328,8 @@ export interface LifecycleArchiveRequest {
   target: LifecycleHostTarget;
   sourceUrl?: string;
   revision?: string;
+  repositoryPath?: string;
+  trackingRef?: string;
 }
 
 export interface LifecycleActivateRequest {
@@ -334,11 +352,19 @@ export interface LifecycleMutationResult {
     | "deployed"
     | "deactivated"
     | "already-stored"
-    | "already-deployed";
+    | "already-deployed"
+    | "updated"
+    | "metadata-updated"
+    | "already-current";
   name: string;
   skillId: string;
   managedPath: string;
   treeHash: string;
+  previousTreeHash?: string;
+  previousRevision?: string;
+  revision?: string;
+  deploymentsPreserved?: number;
+  outdatedDeployments?: number;
   deployment?: LifecycleDeployment;
   reloadRequired?: boolean;
   warning?: string;
@@ -355,10 +381,12 @@ export interface LifecycleSkillStatus {
     actualTreeHash?: string;
   };
   source: LifecycleSource;
+  outdatedDeployments: number;
   deployments: Array<
     LifecycleDeployment & {
       state: "deployed" | "missing" | "drifted";
       integrity: "verified" | "drifted" | "unknown";
+      current: boolean;
       actualTreeHash?: string;
       hostObservation: {
         override: "unknown";
@@ -377,6 +405,7 @@ export interface LifecycleStatusResult {
 
 export interface StashLifecycle {
   install(request: LifecycleInstallRequest): Promise<LifecycleMutationResult>;
+  update(request: LifecycleUpdateRequest): Promise<LifecycleMutationResult>;
   archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;
   activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
   deactivate(

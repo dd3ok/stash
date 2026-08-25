@@ -53,6 +53,7 @@ The Interface is the test surface. Search libraries, tokenization, index shape, 
 ```ts
 interface StashLifecycle {
   install(request: LifecycleInstallRequest): Promise<LifecycleMutationResult>;
+  update(request: LifecycleUpdateRequest): Promise<LifecycleMutationResult>;
   archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;
   activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
   deactivate(request: LifecycleDeactivateRequest): Promise<LifecycleMutationResult>;
@@ -94,9 +95,9 @@ Responsibilities:
 - `util.ts`: hashing, cursor integrity, path containment, tokenization, platform locations.
 - `stash-catalog.ts`: orchestrate the Interface and normalize errors/results.
 - `stash-lifecycle.ts`: validate portable skill trees, serialize mutations,
-  stage atomic copies, maintain archive recovery journals, record stable skill
-  and deployment identities, detect drift, and enforce standalone-only
-  destructive boundaries.
+  stage atomic copies, maintain archive and managed-update recovery journals,
+  record stable skill and deployment identities, detect drift, and enforce
+  standalone-only destructive boundaries.
 
 ## Adapter seam
 
@@ -167,6 +168,28 @@ explicit local skill → reject links/special files/path collisions
   → atomic rename → provenance record → stored
 ```
 
+Update uses caller-observed state as a compare-and-swap boundary:
+
+```text
+explicit local skill + expected tree/revision → verify current managed state
+  → verify canonical URL + immutable revision + exact repository path/ref
+  → same tree: commit-time record/tree compare-and-swap
+    → metadata-only record advance
+  → changed tree: journal-owned staging → snapshot + re-hash staging
+    → commit-time record/tree compare-and-swap
+    → managed-to-backup → staging-to-managed
+    → provenance record commit → verified rename to authorized discard → cleanup
+```
+
+An interrupted changed-tree update either restores the backup before record
+commit or finishes cleanup after record commit. If the previous tree drifted
+during the operation, rollback restores and preserves that user content rather
+than deleting it. A recursive cleanup may resume without re-hashing a partially
+deleted tree only after the journal authorizes the exact operation-owned discard
+path. The stable `skillId` and deployment records do not change. A deployment
+whose recorded tree differs from the new managed tree is reported as not current
+and is never overwritten automatically.
+
 Archive adds a destructive second phase only for an explicitly selected
 standalone directory:
 
@@ -181,6 +204,15 @@ without overwriting an occupied path or finishes committed cleanup. Lock
 ownership is atomically published as a complete directory record. A proven-dead
 PID is reclaimed under a separate atomic guard; malformed or live ownership
 fails closed and is never removed based on age alone.
+
+Archive journals use schema 2. Other archive journal versions are unsupported
+and fail closed; recovery does not attempt an automatic migration.
+
+The managed root, `.stash`, records, staging, and journal roots must all be real
+directories whose resolved paths remain inside the managed root. Journals and
+records must be real files. Recovery is designed for interrupted processes and
+repeat invocation; no fsync protocol is used, so power-loss durability is not a
+guarantee.
 
 Every managed skill has a stable `skillId`; every deployment links to it with a
 separate `deploymentId`, target ID, Stash ownership marker, and expected tree
@@ -203,7 +235,7 @@ The first release intentionally excludes:
 - a second LLM router;
 - a background daemon;
 - transcript telemetry;
-- remote Git installation and updates;
+- remote URL installation and autonomous updates;
 - symlink deployment and overwrite;
 - plugin lifecycle and vendor setting mutation;
 - workspace lifecycle targets and flat-file Antigravity CLI skills;

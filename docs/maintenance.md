@@ -1,117 +1,72 @@
-# Maintenance and release gates
+# Maintenance
 
 ## Source of truth
 
-- `src/` owns catalog, routing, cache, and path-security behavior.
-- `skills/stash/SKILL.md` is the canonical portable workflow.
-- `skills/stash/agents/openai.yaml` is Codex-only policy.
-- `scripts/build-adapters.mjs` owns every generated vendor artifact.
-- `adapters/` and `skills/stash/scripts/stash.mjs` are generated outputs.
+- `src/`: catalog, routing, lifecycle, cache, and path behavior.
+- `skills/stash/SKILL.md`: portable agent workflow.
+- `skills/stash/references/`: machine-facing CLI and configuration contracts.
+- `skills/stash/agents/openai.yaml`: Codex-only invocation policy.
+- `scripts/build-adapters.mjs`: generated vendor packaging.
 
-Never hand-edit a generated Adapter. Change the canonical source or generator,
-run `npm run build`, and verify `npm run lint:artifacts`.
+`adapters/` and `skills/stash/scripts/stash.mjs` are generated. Change their
+canonical source, run `npm run build`, and commit the result.
 
-## Pull request gates
+## Pull request checks
 
-Run:
+Run the fast, complete project check:
 
 ```bash
 npm ci
 npm run test:all
-npm run bench
-npm run pack:check
 ```
 
-The routing benchmark uses generous regression budgets rather than advertising a
-portable latency guarantee. Record exact hardware and catalog shape for any
-performance claim.
+Run additional checks only when their surface changes:
 
-When the Codex authoring tools are available, also run:
+| Change | Additional check |
+|---|---|
+| routing, scoring, or golden cases | `npm run bench` |
+| package contents or release preparation | `npm run pack:check` |
+| canonical skill metadata | `python <skill-creator>/scripts/quick_validate.py skills/stash` |
+| Codex plugin metadata or layout | `python <plugin-creator>/scripts/validate_plugin.py .` and the generated Codex adapter |
+| vendor support claim | fresh session on the named vendor binary and record its version |
 
-```text
-python <skill-creator>/scripts/quick_validate.py skills/stash
-python <plugin-creator>/scripts/validate_plugin.py .
-python <plugin-creator>/scripts/validate_plugin.py adapters/codex
-```
+The Python validators require PyYAML. On Windows, set `PYTHONUTF8=1` when the
+selected Python environment uses a legacy code page.
 
-These external Python validators require PyYAML in the selected environment.
-On Windows, set `PYTHONUTF8=1` if the validator inherits a legacy code page.
-
-## Vendor contract review
-
-Before changing a support claim:
-
-1. read the current first-party skill and plugin documentation;
-2. update only the relevant Adapter;
-3. build in a clean checkout;
-4. test against a fresh session of the target binary;
-5. record the binary version and invocation used;
-6. update `docs/vendor-support.md`.
-
-Do not infer support from unknown frontmatter being ignored. Codex and Claude
-have documented manual-only controls; Antigravity currently does not.
-
-## Lifecycle lock repair
-
-Normal dead-owner recovery is automatic. A crash while holding the short-lived
-`.stash/lifecycle.reclaim` guard intentionally fails closed rather than guessing
-that no reclaimer is alive. Repair it only after all of these checks:
-
-1. stop Stash lifecycle commands and confirm no Stash process is running;
-2. inspect `.stash/lifecycle.lock/owner.json` and confirm its PID is absent;
-3. copy the entire `.stash` metadata directory to a backup outside the managed
-   root;
-4. move `lifecycle.reclaim` to a uniquely named quarantine outside `.stash`
-   instead of deleting it;
-5. run one non-destructive lifecycle mutation such as an idempotent `install`,
-   allowing the lock preflight to recover any archive journal;
-6. run `stash status --json` and retain the quarantine until state is verified.
-
-Never remove a live owner, treat PID age as proof, edit a journal, or overwrite
-an occupied archive source. A malformed main `lifecycle.lock` also requires
-manual inspection and remains fail-closed.
+The benchmark is diagnostic evidence for routing changes. Do not use its timing
+as a portable latency claim without recording hardware and catalog shape.
 
 ## Routing changes
 
-Every scoring change needs:
-
-- a positive fixture;
-- a nearby negative fixture;
-- a no-match fixture;
-- pagination coverage when the relevant set changes;
-- a run against a representative real catalog;
-- before/after benchmark results.
-
-Prefer sidecar aliases, intents, and examples over adding language-specific
-runtime dependencies. Add embeddings or a second model only after a measured
-lexical failure set justifies their operational cost.
+Update `tests/routing-golden.test.ts` with the real failing case, a nearby
+negative, and a no-match case. Cover pagination when the relevant set changes.
+Prefer metadata or weight changes over a new routing subsystem.
 
 ## Security changes
 
-Preserve these invariants:
+Review [SECURITY.md](../SECURITY.md) and run the lifecycle tests when changing
+path handling, managed writes, provenance, locks, journals, or recovery. Keep
+cross-platform CI for these changes because link, rename, realpath, and lock
+behavior differs by operating system.
 
-- catalog operations are read-only; explicit archive/deactivate authority is
-  limited to the exact standalone target or verified Stash-owned deployment;
-- managed storage never overlaps an external catalog by equality, nesting, or
-  filesystem alias;
-- lifecycle writes are limited to the managed root and explicit standalone
-  targets;
-- lifecycle never overwrites, follows links, or deletes untracked/drifted paths;
-- staged copies and destructive tombstones are hash-verified;
-- archives are journaled and recover deterministically without overwriting a
-  source path that became occupied;
-- stable skill/deployment IDs, ownership, targets, and hashes must agree before
-  withdrawal;
-- hash-matching catalog sources and Stash-owned deployments fold into the
-  managed search projection; drifted or unrelated copies remain visible;
-- lock ownership is atomically published, dead owners are reclaimed under a
-  separate guard, and malformed/live owners fail closed;
-- reads use refs and relative resources;
-- `realpath` containment is checked after symlink resolution;
-- content reads are bounded;
-- scripts are never executed by Stash;
-- cache files are regenerable and atomically replaced;
-- trust labels do not grant host permissions.
+## Vendor contract review
 
-Review changes to catalog traversal, path handling, archives, or remote sources
-as security-sensitive.
+Before changing a support claim, read current first-party documentation, change
+only the relevant adapter source, build, test a fresh target session, and record
+the version and invocation. File validation alone does not prove live support.
+
+## Lifecycle lock repair
+
+Normal dead-owner recovery is automatic. If a crash leaves
+`.stash/lifecycle.reclaim`, fail closed and repair only after every step below:
+
+1. Stop lifecycle commands and confirm no Stash process is running.
+2. Inspect `.stash/lifecycle.lock/owner.json` and confirm its PID is absent.
+3. Back up the entire `.stash` directory outside the managed root.
+4. Move `lifecycle.reclaim` to a uniquely named external quarantine; do not
+   delete it.
+5. Run an idempotent lifecycle mutation so journal preflight can recover.
+6. Run `stash status --json` and keep the quarantine until state is verified.
+
+Never remove a live or malformed owner, infer liveness from age, edit a
+journal, or overwrite an occupied archive source.
