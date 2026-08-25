@@ -33,9 +33,8 @@ Run additional checks only when their surface changes:
 The Python validators require PyYAML. On Windows, set `PYTHONUTF8=1` when the
 selected Python environment uses a legacy code page.
 
-The benchmark is diagnostic evidence for routing changes and a main-branch
-regression check. Do not use its timing as a portable latency claim without
-recording hardware and catalog shape.
+The benchmark is diagnostic evidence for routing changes. Do not use its timing
+as a portable latency claim without recording hardware and catalog shape.
 
 ## Routing changes
 

@@ -36,8 +36,8 @@ distinctions, no-match queries, false activations, and pagination. Add a real
 failing query before changing routing behavior.
 
 `npm run bench` reports indexing and lookup timing on a synthetic catalog. Run
-it for routing changes and on main; it is not a universal pull-request gate or
-a portable performance claim.
+it for routing changes; it is not a universal pull-request gate or a portable
+performance claim.
 
 ## Tuning policy
 
