@@ -21,6 +21,7 @@ export type {
   LifecycleHost,
   LifecycleHostTarget,
   LifecycleInstallRequest,
+  LifecycleUninstallRequest,
   LifecycleUpdateRequest,
   LifecycleMutationResult,
   LifecycleScope,

@@ -193,6 +193,45 @@ test("bundled skill CLI installs, resolves, deploys, and deactivates a managed s
   );
   assert.equal(deactivated.status, "deactivated");
   await assert.rejects(access(path.join(hostRoot, "rare-skill")));
+
+  const uninstalled = JSON.parse(
+    (
+      await execFileAsync(process.execPath, [
+        bundledCli,
+        "uninstall",
+        "rare-skill",
+        ...common,
+      ], { env: cliEnvironment })
+    ).stdout,
+  );
+  assert.equal(uninstalled.status, "uninstalled");
+  await assert.rejects(access(path.join(managedRoot, "rare-skill")));
+
+  await execFileAsync(process.execPath, [
+    bundledCli,
+    "install",
+    source,
+    ...common,
+  ], { env: cliEnvironment });
+  const { stdout: humanUninstall } = await execFileAsync(process.execPath, [
+    bundledCli,
+    "uninstall",
+    "rare-skill",
+    "--managed-root",
+    managedRoot,
+  ], { env: cliEnvironment });
+  assert.match(humanUninstall, /rare-skill: uninstalled/u);
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [
+      bundledCli,
+      "uninstall",
+      "rare-skill",
+      "--force",
+      ...common,
+    ], { env: cliEnvironment }),
+    (error) => error.code === 2 && /Unknown option.*--force/u.test(error.stderr),
+  );
 });
 
 test("human output preserves URL-only source attribution", async () => {
@@ -301,6 +340,7 @@ test("npm package entrypoints match the compiled layout", async () => {
   assert.match(stdout, /stash exact <name>/u);
   assert.match(stdout, /stash install <local-skill-dir>/u);
   assert.match(stdout, /stash update <local-skill-dir>/u);
+  assert.match(stdout, /stash uninstall <name>/u);
   assert.match(stdout, /--source <id\|name\|url>/u);
 
   const { stdout: flagHelp } = await execFileAsync(process.execPath, [

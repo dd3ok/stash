@@ -118,6 +118,17 @@ Each record commits independently, so report successes, skips, and failures.
   owned by the host.
 - Honor `reloadRequired` and `warning` after a discovery-path change.
 
+### Uninstall
+
+`uninstall <name>` removes only the verified Stash-managed canonical copy and
+its lifecycle record. It never removes an external catalog source, host
+deployment, plugin, or host setting. Every recorded deployment must first be
+removed explicitly with `deactivate`, including a deployment already reported
+missing. If the managed directory is already missing, a valid zero-deployment
+record is removed with a warning. Hash drift, links, files, special paths, and
+invalid metadata fail closed and are preserved for diagnosis. There is no
+`--force`, automatic deactivation, trash store, or restore command.
+
 ### Status
 
 `status [name] --json` reports store presence, tree integrity, deployment

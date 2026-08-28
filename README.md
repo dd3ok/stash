@@ -64,12 +64,14 @@ stash install /path/to/rare-skill
 stash status rare-skill
 stash activate rare-skill --host codex
 stash deactivate rare-skill --host codex
+stash uninstall rare-skill
 ```
 
 `archive` is the destructive variant for one explicitly selected standalone
 host skill. `update` replaces only an existing managed copy and does not rewrite
 deployed copies. Remote repository content must be staged and reviewed locally
-before the CLI sees it.
+before the CLI sees it. `uninstall` removes only an inactive, verified managed
+copy; tracked deployments must be deactivated first.
 
 The [CLI contract](skills/stash/references/CLI-CONTRACT.md) is the authority for
 mutation preconditions, provenance, result states, bulk updates, and supported

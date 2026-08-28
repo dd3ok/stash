@@ -23,6 +23,9 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 - Managed update recovery rechecks record/tree state at commit time, preserves a
   drifted previous tree during rollback, and recursively removes only an exact
   operation-owned path after journal authorization.
+- Managed uninstall requires zero deployment records, rechecks a present tree
+  after its same-root rename, and removes only that verified managed tree and
+  lifecycle record. Interrupted cleanup remains journaled.
 - Remote managed provenance uses a canonical repository URL, caller-resolved
   immutable revision, exact case-sensitive repository-relative skill path, and
   exact `HEAD`, `refs/heads/...`, or `refs/tags/...` tracking ref. These four

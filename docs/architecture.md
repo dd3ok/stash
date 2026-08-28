@@ -57,6 +57,7 @@ interface StashLifecycle {
   archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;
   activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
   deactivate(request: LifecycleDeactivateRequest): Promise<LifecycleMutationResult>;
+  uninstall(request: LifecycleUninstallRequest): Promise<LifecycleMutationResult>;
   status(request?: LifecycleStatusRequest): Promise<LifecycleStatusResult>;
 }
 ```
@@ -95,7 +96,7 @@ Responsibilities:
 - `util.ts`: hashing, cursor integrity, path containment, tokenization, platform locations.
 - `stash-catalog.ts`: orchestrate the Interface and normalize errors/results.
 - `stash-lifecycle.ts`: validate portable skill trees, serialize mutations,
-  stage atomic copies, maintain archive and managed-update recovery journals,
+  stage atomic copies, maintain archive, update, and uninstall recovery journals,
   record stable skill and deployment identities, detect drift, and enforce
   standalone-only destructive boundaries.
 
@@ -207,6 +208,12 @@ fails closed and is never removed based on age alone.
 
 Archive journals use schema 2. Other archive journal versions are unsupported
 and fail closed; recovery does not attempt an automatic migration.
+
+Uninstall accepts only a managed skill with zero deployment records. It moves
+the verified tree and record to operation-owned tombstones, authorizes cleanup
+as the logical commit, then removes those exact paths. Recovery restores both
+before commit or resumes even partially completed recursive cleanup afterward;
+external sources and host roots are never in scope.
 
 The managed root, `.stash`, records, staging, and journal roots must all be real
 directories whose resolved paths remain inside the managed root. Journals and
