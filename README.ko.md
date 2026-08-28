@@ -65,12 +65,14 @@ stash install /path/to/rare-skill
 stash status rare-skill
 stash activate rare-skill --host codex
 stash deactivate rare-skill --host codex
+stash uninstall rare-skill
 ```
 
 `archive`는 사용자가 정확히 고른 독립 호스트 스킬을 보관한 뒤 원본을
 제거하는 파괴적 변형입니다. `update`는 기존 관리형 사본만 교체하며 배포본을
 자동으로 덮어쓰지 않습니다. 원격 저장소 내용은 CLI에 전달하기 전에 로컬
-임시 경로에 준비해 검토해야 합니다.
+임시 경로에 준비해 검토해야 합니다. `uninstall`은 검증된 비활성 관리형
+사본만 제거하며, 기록된 배포는 먼저 `deactivate`해야 합니다.
 
 변경 전제조건, provenance, 결과 상태, 일괄 업데이트, 지원 대상은
 [CLI 계약](skills/stash/references/CLI-CONTRACT.md)이 기준입니다. 명령 문법은

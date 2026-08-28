@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
   access,
+  cp,
   mkdtemp,
   mkdir,
   readdir,
@@ -9,6 +10,7 @@ import {
   rename,
   rm,
   symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,6 +25,7 @@ import {
 import {
   createStashLifecycle as createStashLifecycleForCurrentHome,
 } from "../src/stash-lifecycle.js";
+import { sha256 } from "../src/internal/util.js";
 import type {
   CreateStashLifecycleOptions,
   ManagedSkillRecord,
@@ -134,6 +137,393 @@ test("install creates a searchable inactive canonical copy without changing sour
 
   const repeated = await lifecycle.install({ source: fixture.sourceRoot });
   assert.equal(repeated.status, "already-stored");
+});
+
+test("uninstall removes only a verified inactive managed copy", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+
+  const uninstalled = await lifecycle.uninstall({ name: "rare-skill" });
+
+  assert.equal(uninstalled.status, "uninstalled");
+  assert.equal(uninstalled.skillId, installed.skillId);
+  assert.equal(uninstalled.treeHash, installed.treeHash);
+  await assert.rejects(access(installed.managedPath));
+  await assert.rejects(
+    access(
+      path.join(
+        fixture.managedRoot,
+        ".stash",
+        "records",
+        "rare-skill.json",
+      ),
+    ),
+  );
+  await access(path.join(fixture.sourceRoot, "SKILL.md"));
+  assert.equal(
+    (await lifecycle.status({ name: "rare-skill" })).status,
+    "not-found",
+  );
+});
+
+test("uninstall refuses tracked deployments and managed drift without mutation", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const target = { host: "codex" as const, scope: "user" as const };
+  await lifecycle.activate({ name: "rare-skill", target });
+
+  await assert.rejects(
+    lifecycle.uninstall({ name: "rare-skill" }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "active-deployments",
+  );
+  await access(installed.managedPath);
+
+  await lifecycle.deactivate({ name: "rare-skill", target });
+  await writeFile(
+    path.join(installed.managedPath, "references", "guide.md"),
+    "user changed managed content\n",
+    "utf8",
+  );
+  await assert.rejects(
+    lifecycle.uninstall({ name: "rare-skill" }),
+    (error: unknown) =>
+      error instanceof StashError && error.code === "managed-drift",
+  );
+  await access(installed.managedPath);
+  await access(
+    path.join(
+      fixture.managedRoot,
+      ".stash",
+      "records",
+      "rare-skill.json",
+    ),
+  );
+});
+
+test("uninstall removes stale metadata when the managed copy is already missing", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const recordPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "records",
+    "rare-skill.json",
+  );
+  await rm(installed.managedPath, { recursive: true, force: false });
+
+  const uninstalled = await lifecycle.uninstall({ name: "rare-skill" });
+
+  assert.equal(uninstalled.status, "uninstalled");
+  assert.match(uninstalled.warning ?? "", /already missing/u);
+  await assert.rejects(access(recordPath));
+  await access(path.join(fixture.sourceRoot, "SKILL.md"));
+});
+
+test("uninstall preserves linked and non-directory managed paths", async () => {
+  for (const replacement of ["file", "link"] as const) {
+    const fixture = await lifecycleFixture();
+    const lifecycle = await createStashLifecycle({
+      catalogs: [],
+      managedRoot: fixture.managedRoot,
+      lifecycleHome: path.join(fixture.base, "home"),
+    });
+    const installed = await lifecycle.install({ source: fixture.sourceRoot });
+    const preserved = path.join(fixture.base, `preserved-${replacement}`);
+    await rename(installed.managedPath, preserved);
+    if (replacement === "file") {
+      await writeFile(installed.managedPath, "do not delete\n", "utf8");
+    } else {
+      await symlink(
+        preserved,
+        installed.managedPath,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+    }
+
+    await assert.rejects(
+      lifecycle.uninstall({ name: "rare-skill" }),
+      (error: unknown) =>
+        error instanceof StashError && error.code === "managed-drift",
+    );
+    await access(installed.managedPath);
+    await access(
+      path.join(
+        fixture.managedRoot,
+        ".stash",
+        "records",
+        "rare-skill.json",
+      ),
+    );
+  }
+});
+
+test("uninstall recovery restores before commit and finishes after commit", async () => {
+  for (const stage of ["record-tombstoned", "cleanup-authorized"] as const) {
+    const fixture = await lifecycleFixture();
+    const lifecycle = await createStashLifecycle({
+      catalogs: [],
+      managedRoot: fixture.managedRoot,
+      lifecycleHome: path.join(fixture.base, "home"),
+    });
+    const installed = await lifecycle.install({ source: fixture.sourceRoot });
+    const operationId =
+      stage === "cleanup-authorized"
+        ? "22222222-2222-4222-8222-222222222222"
+        : "11111111-1111-4111-8111-111111111111";
+    const stagingRoot = path.join(fixture.managedRoot, ".stash", "staging");
+    const journalPath = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "journal",
+      `${operationId}.json`,
+    );
+    const recordPath = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "records",
+      "rare-skill.json",
+    );
+    const treeTombstone = path.join(
+      stagingRoot,
+      `uninstall-${operationId}-tree`,
+    );
+    const recordTombstone = path.join(
+      stagingRoot,
+      `uninstall-${operationId}-record.json`,
+    );
+    const recordSource = await readFile(recordPath, "utf8");
+    await rename(installed.managedPath, treeTombstone);
+    await rename(recordPath, recordTombstone);
+    if (stage === "cleanup-authorized") {
+      await rm(path.join(treeTombstone, "references", "guide.md"), {
+        force: false,
+      });
+    }
+    await writeFile(
+      journalPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        kind: "managed-uninstall",
+        operationId,
+        stage,
+        name: "rare-skill",
+        skillId: installed.skillId,
+        treeHash: installed.treeHash,
+        recordHash: sha256(recordSource),
+        managedExisted: true,
+        managedPath: installed.managedPath,
+        recordPath,
+        treeTombstone,
+        recordTombstone,
+        createdAt: "2026-08-28T00:00:00.000Z",
+      })}\n`,
+      "utf8",
+    );
+    const otherSource = await createStandaloneSkill(
+      path.join(fixture.base, "other-source"),
+      "other-skill",
+    );
+
+    await lifecycle.install({ source: otherSource });
+
+    await assert.rejects(access(journalPath));
+    await assert.rejects(access(treeTombstone));
+    await assert.rejects(access(recordTombstone));
+    if (stage === "cleanup-authorized") {
+      await assert.rejects(access(installed.managedPath));
+      await assert.rejects(access(recordPath));
+    } else {
+      await access(installed.managedPath);
+      await access(recordPath);
+    }
+  }
+});
+
+test("uninstall recovery preserves a tombstone when the record disappears before commit", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [],
+    managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({ source: fixture.sourceRoot });
+  const operationId = "33333333-3333-4333-8333-333333333333";
+  const recordPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "records",
+    "rare-skill.json",
+  );
+  const journalPath = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "journal",
+    `${operationId}.json`,
+  );
+  const treeTombstone = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "staging",
+    `uninstall-${operationId}-tree`,
+  );
+  const recordTombstone = path.join(
+    fixture.managedRoot,
+    ".stash",
+    "staging",
+    `uninstall-${operationId}-record.json`,
+  );
+  const recordSource = await readFile(recordPath, "utf8");
+  await rename(installed.managedPath, treeTombstone);
+  await unlink(recordPath);
+  await writeFile(
+    journalPath,
+    `${JSON.stringify({
+      schemaVersion: 1,
+      kind: "managed-uninstall",
+      operationId,
+      stage: "tree-tombstoned",
+      name: "rare-skill",
+      skillId: installed.skillId,
+      treeHash: installed.treeHash,
+      recordHash: sha256(recordSource),
+      managedExisted: true,
+      managedPath: installed.managedPath,
+      recordPath,
+      treeTombstone,
+      recordTombstone,
+      createdAt: "2026-08-28T00:00:00.000Z",
+    })}\n`,
+    "utf8",
+  );
+  const otherSource = await createStandaloneSkill(
+    path.join(fixture.base, "other-source"),
+    "other-skill",
+  );
+
+  await assert.rejects(
+    lifecycle.install({ source: otherSource }),
+    (error: unknown) =>
+      error instanceof StashError &&
+      error.code === "lifecycle-recovery-conflict",
+  );
+  await access(journalPath);
+  await access(treeTombstone);
+  await assert.rejects(access(installed.managedPath));
+});
+
+test("uninstall recovery fails closed for mismatched, occupied, and malformed state", async () => {
+  for (const [scenario, operationId] of [
+    ["mismatched", "44444444-4444-4444-8444-444444444444"],
+    ["occupied", "55555555-5555-4555-8555-555555555555"],
+    ["malformed", "66666666-6666-4666-8666-666666666666"],
+  ] as const) {
+    const fixture = await lifecycleFixture();
+    const lifecycle = await createStashLifecycle({
+      catalogs: [],
+      managedRoot: fixture.managedRoot,
+      lifecycleHome: path.join(fixture.base, "home"),
+    });
+    const installed = await lifecycle.install({ source: fixture.sourceRoot });
+    const recordPath = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "records",
+      "rare-skill.json",
+    );
+    const journalPath = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "journal",
+      `${operationId}.json`,
+    );
+    const expectedTreeTombstone = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "staging",
+      `uninstall-${operationId}-tree`,
+    );
+    const recordTombstone = path.join(
+      fixture.managedRoot,
+      ".stash",
+      "staging",
+      `uninstall-${operationId}-record.json`,
+    );
+    const recordSource = await readFile(recordPath, "utf8");
+    if (scenario === "mismatched") {
+      await rename(installed.managedPath, expectedTreeTombstone);
+      await writeFile(
+        path.join(expectedTreeTombstone, "references", "guide.md"),
+        "changed after tombstoning\n",
+        "utf8",
+      );
+    } else if (scenario === "occupied") {
+      await cp(installed.managedPath, expectedTreeTombstone, {
+        recursive: true,
+      });
+    }
+    const treeTombstone =
+      scenario === "malformed"
+        ? path.join(fixture.base, "not-operation-owned")
+        : expectedTreeTombstone;
+    await writeFile(
+      journalPath,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        kind: "managed-uninstall",
+        operationId,
+        stage: "tree-tombstoned",
+        name: "rare-skill",
+        skillId: installed.skillId,
+        treeHash: installed.treeHash,
+        recordHash: sha256(recordSource),
+        managedExisted: true,
+        managedPath: installed.managedPath,
+        recordPath,
+        treeTombstone,
+        recordTombstone,
+        createdAt: "2026-08-28T00:00:00.000Z",
+      })}\n`,
+      "utf8",
+    );
+    const otherSource = await createStandaloneSkill(
+      path.join(fixture.base, "other-source"),
+      "other-skill",
+    );
+    const expectedCode =
+      scenario === "malformed"
+        ? "invalid-lifecycle-journal"
+        : "lifecycle-recovery-conflict";
+
+    await assert.rejects(
+      lifecycle.install({ source: otherSource }),
+      (error: unknown) =>
+        error instanceof StashError && error.code === expectedCode,
+    );
+    await access(journalPath);
+    await access(recordPath);
+    if (scenario !== "malformed") {
+      await access(expectedTreeTombstone);
+    }
+    if (scenario !== "mismatched") {
+      await access(installed.managedPath);
+    }
+  }
 });
 
 test("update transactionally replaces a managed tree while preserving its identity", async () => {

@@ -9932,6 +9932,15 @@ function samePath(left, right) {
 function targetIdentity(target) {
   return `${target.host}:${target.scope}:${pathIdentity(target.root)}`;
 }
+function validManagedSkillRecord(value, name) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value;
+  return record.schemaVersion === STORE_SCHEMA_VERSION && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === name && /^sha256:[0-9a-f]{64}$/iu.test(record.treeHash) && Boolean(record.source) && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path8.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && (record.source.updatedAt === void 0 || typeof record.source.updatedAt === "string") && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
+    (deployment) => typeof deployment.deploymentId === "string" && deployment.skillId === record.skillId && typeof deployment.targetId === "string" && deployment.targetId === targetIdentity(deployment) && deployment.ownership === "stash" && samePath(deployment.path, path8.join(deployment.root, record.name))
+  );
+}
 async function isPluginContained(source) {
   let current = path8.dirname(source);
   for (let depth = 0; depth < 12; depth += 1) {
@@ -10443,6 +10452,203 @@ var StashLifecycleImplementation = class {
     await unlink2(journalPath);
     return "rolled-back";
   }
+  #validateUninstallJournal(journal, journalPath) {
+    const stages = /* @__PURE__ */ new Set([
+      "started",
+      "tree-tombstoned",
+      "record-tombstoned",
+      "cleanup-authorized"
+    ]);
+    if (journal.schemaVersion !== 1 || journal.kind !== "managed-uninstall" || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || typeof journal.skillId !== "string" || journal.skillId.length === 0 || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.recordHash) || typeof journal.managedExisted !== "boolean" || typeof journal.createdAt !== "string" || !path8.isAbsolute(journal.managedPath) || !path8.isAbsolute(journal.recordPath) || !path8.isAbsolute(journal.treeTombstone) || !path8.isAbsolute(journal.recordTombstone)) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Invalid or unsafe managed uninstall journal "${journalPath}".`,
+        5
+      );
+    }
+    const stagingRoot = path8.join(this.#metadataRoot(), "staging");
+    if (!samePath(
+      journal.managedPath,
+      path8.join(this.#managedRoot, journal.name)
+    ) || !samePath(journal.recordPath, this.#recordPath(journal.name)) || !samePath(
+      journal.treeTombstone,
+      path8.join(stagingRoot, `uninstall-${journal.operationId}-tree`)
+    ) || !samePath(
+      journal.recordTombstone,
+      path8.join(
+        stagingRoot,
+        `uninstall-${journal.operationId}-record.json`
+      )
+    )) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Invalid or unsafe managed uninstall journal "${journalPath}".`,
+        5
+      );
+    }
+  }
+  async #journalRecordHash(journal, target, label) {
+    const type = await pathType(target);
+    if (type === "missing") {
+      return void 0;
+    }
+    if (type !== "file") {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} is not a real file: "${target}".`,
+        4
+      );
+    }
+    try {
+      const source = await readFile6(target, "utf8");
+      const parsed = JSON.parse(source);
+      if (!validManagedSkillRecord(parsed, journal.name) || parsed.skillId !== journal.skillId || parsed.treeHash !== journal.treeHash || parsed.deployments.length !== 0 || sha256(source) !== journal.recordHash) {
+        throw new Error("record identity or content changed");
+      }
+      return journal.recordHash;
+    } catch (error) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} drifted at "${target}": ${String(error)}`,
+        4
+      );
+    }
+  }
+  async #moveVerifiedUninstallRecord(journal, source, destination, label) {
+    if (await pathType(destination) !== "missing") {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `${label} destination is occupied at "${destination}".`,
+        4
+      );
+    }
+    await this.#journalRecordHash(journal, source, label);
+    await rename2(source, destination);
+    await this.#journalRecordHash(journal, destination, label);
+  }
+  async #removeAuthorizedUninstallPath(journal, target, kind) {
+    const expected = kind === "tree" ? journal.treeTombstone : journal.recordTombstone;
+    if (!samePath(target, expected)) {
+      throw new StashError(
+        "invalid-lifecycle-journal",
+        `Managed uninstall cleanup path is not operation-owned: "${target}".`,
+        5
+      );
+    }
+    await this.#assertManagedLayout();
+    const type = await pathType(target);
+    if (type === "missing") {
+      return;
+    }
+    if (type === "directory") {
+      await rm(target, { recursive: true, force: true });
+      return;
+    }
+    await unlink2(target);
+  }
+  async #recoverUninstallJournal(journal, journalPath) {
+    await this.#assertManagedLayout();
+    if (journal.stage === "cleanup-authorized") {
+      if (await pathType(journal.managedPath) !== "missing" || await pathType(journal.recordPath) !== "missing") {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Committed uninstall paths were repopulated for "${journal.name}".`,
+          4
+        );
+      }
+      await this.#removeAuthorizedUninstallPath(
+        journal,
+        journal.treeTombstone,
+        "tree"
+      );
+      await this.#removeAuthorizedUninstallPath(
+        journal,
+        journal.recordTombstone,
+        "record"
+      );
+      await unlink2(journalPath);
+      return "committed";
+    }
+    const managedHash = await this.#journalTreeHash(
+      journal.managedPath,
+      "Managed uninstall target"
+    );
+    const treeTombstoneHash = await this.#journalTreeHash(
+      journal.treeTombstone,
+      "Managed uninstall tree tombstone"
+    );
+    const recordHash = await this.#journalRecordHash(
+      journal,
+      journal.recordPath,
+      "Managed uninstall record"
+    );
+    const recordTombstoneHash = await this.#journalRecordHash(
+      journal,
+      journal.recordTombstone,
+      "Managed uninstall record tombstone"
+    );
+    if (managedHash !== void 0 && managedHash !== journal.treeHash || treeTombstoneHash !== void 0 && treeTombstoneHash !== journal.treeHash) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed uninstall tree drifted for "${journal.name}".`,
+        4
+      );
+    }
+    if (managedHash !== void 0 && treeTombstoneHash !== void 0) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed uninstall has both a canonical tree and tombstone for "${journal.name}".`,
+        4
+      );
+    }
+    if (recordHash !== void 0 && recordTombstoneHash !== void 0) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed uninstall has both a canonical record and tombstone for "${journal.name}".`,
+        4
+      );
+    }
+    if (recordHash === void 0 && recordTombstoneHash === void 0) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Managed uninstall lost its lifecycle record before commit for "${journal.name}".`,
+        4
+      );
+    }
+    if (journal.managedExisted) {
+      if (managedHash === void 0 && treeTombstoneHash === void 0) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed uninstall lost its canonical tree for "${journal.name}".`,
+          4
+        );
+      }
+      if (managedHash === void 0) {
+        await this.#moveVerifiedJournalTree(
+          journal.treeTombstone,
+          journal.managedPath,
+          journal.treeHash,
+          "Managed uninstall tree tombstone"
+        );
+      }
+    } else if (managedHash !== void 0 || treeTombstoneHash !== void 0) {
+      throw new StashError(
+        "lifecycle-recovery-conflict",
+        `Metadata-only uninstall path changed for "${journal.name}".`,
+        4
+      );
+    }
+    if (recordHash === void 0) {
+      await this.#moveVerifiedUninstallRecord(
+        journal,
+        journal.recordTombstone,
+        journal.recordPath,
+        "Managed uninstall record tombstone"
+      );
+    }
+    await unlink2(journalPath);
+    return "rolled-back";
+  }
   async #removeIncompleteManaged(journal) {
     if (journal.managedExistedBefore) {
       return;
@@ -10590,6 +10796,9 @@ var StashLifecycleImplementation = class {
       if ("kind" in journal && journal.kind === "managed-update") {
         this.#validateUpdateJournal(journal, journalPath);
         await this.#recoverUpdateJournal(journal, journalPath);
+      } else if ("kind" in journal && journal.kind === "managed-uninstall") {
+        this.#validateUninstallJournal(journal, journalPath);
+        await this.#recoverUninstallJournal(journal, journalPath);
       } else {
         const archiveJournal = journal;
         this.#validateArchiveJournal(archiveJournal, journalPath);
@@ -10781,9 +10990,7 @@ var StashLifecycleImplementation = class {
         throw new Error("lifecycle record is not a real file");
       }
       const parsed = JSON.parse(await readFile6(recordPath, "utf8"));
-      if (parsed.schemaVersion !== STORE_SCHEMA_VERSION || typeof parsed.skillId !== "string" || parsed.skillId.length === 0 || parsed.name !== name || !/^sha256:[0-9a-f]{64}$/iu.test(parsed.treeHash) || !parsed.source || parsed.source.kind !== "local-import" && parsed.source.kind !== "standalone-archive" || typeof parsed.source.location !== "string" || !path8.isAbsolute(parsed.source.location) || typeof parsed.source.importedAt !== "string" || parsed.source.updatedAt !== void 0 && typeof parsed.source.updatedAt !== "string" || !validStoredRemoteProvenance(parsed.source) || !Array.isArray(parsed.deployments) || parsed.deployments.some(
-        (deployment) => typeof deployment.deploymentId !== "string" || deployment.skillId !== parsed.skillId || typeof deployment.targetId !== "string" || deployment.targetId !== targetIdentity(deployment) || deployment.ownership !== "stash" || !samePath(deployment.path, path8.join(deployment.root, parsed.name))
-      )) {
+      if (!validManagedSkillRecord(parsed, name)) {
         throw new Error("invalid lifecycle record shape");
       }
       return parsed;
@@ -11719,6 +11926,172 @@ var StashLifecycleImplementation = class {
       return this.#deactivateDeployment(record, managedPath, target);
     });
   }
+  async uninstall(request) {
+    return this.#withLock(async () => {
+      const record = await this.#readRecord(request.name);
+      if (!record) {
+        throw new StashError(
+          "managed-skill-not-found",
+          `Managed skill "${request.name}" was not found.`,
+          4
+        );
+      }
+      if (record.deployments.length > 0) {
+        throw new StashError(
+          "active-deployments",
+          `Managed skill "${record.name}" still has ${record.deployments.length} tracked deployment(s); deactivate each host target first. If deactivation reports drift, reconcile that host copy before retrying deactivation.`,
+          3
+        );
+      }
+      const managedPath = path8.join(this.#managedRoot, record.name);
+      const managedType = await pathType(managedPath);
+      if (managedType !== "missing" && managedType !== "directory") {
+        throw new StashError(
+          "managed-drift",
+          `Managed skill "${record.name}" is not a real directory; refusing to uninstall it.`,
+          3
+        );
+      }
+      const managedExisted = managedType === "directory";
+      if (managedExisted) {
+        const managedSnapshot = await snapshotTree(managedPath);
+        if (managedSnapshot.treeHash !== record.treeHash) {
+          throw new StashError(
+            "managed-drift",
+            `Managed skill "${record.name}" no longer matches its recorded hash.`,
+            3
+          );
+        }
+      }
+      const operationId = randomUUID();
+      const recordPath = this.#recordPath(record.name);
+      const recordSource = await readFile6(recordPath, "utf8");
+      const stagingRoot = path8.join(this.#metadataRoot(), "staging");
+      const journal = {
+        schemaVersion: 1,
+        kind: "managed-uninstall",
+        operationId,
+        stage: "started",
+        name: record.name,
+        skillId: record.skillId,
+        treeHash: record.treeHash,
+        recordHash: sha256(recordSource),
+        managedExisted,
+        managedPath,
+        recordPath,
+        treeTombstone: path8.join(
+          stagingRoot,
+          `uninstall-${operationId}-tree`
+        ),
+        recordTombstone: path8.join(
+          stagingRoot,
+          `uninstall-${operationId}-record.json`
+        ),
+        createdAt: new Date(this.#now()).toISOString()
+      };
+      const journalPath = this.#journalPath(operationId);
+      await this.#writeJournal(journal);
+      let committed = false;
+      try {
+        const commitRecord = await this.#readRecord(record.name);
+        if (!commitRecord || !isDeepStrictEqual(commitRecord, record) || sha256(await readFile6(recordPath, "utf8")) !== journal.recordHash) {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed skill "${record.name}" changed before uninstall could commit.`,
+            3
+          );
+        }
+        const commitManagedType = await pathType(managedPath);
+        if (managedExisted) {
+          if (commitManagedType !== "directory") {
+            throw new StashError(
+              "managed-version-conflict",
+              `Managed skill "${record.name}" changed before uninstall could commit.`,
+              3
+            );
+          }
+          const commitSnapshot = await snapshotTree(managedPath);
+          if (commitSnapshot.treeHash !== record.treeHash) {
+            throw new StashError(
+              "managed-version-conflict",
+              `Managed skill "${record.name}" changed before uninstall could commit.`,
+              3
+            );
+          }
+          await rename2(managedPath, journal.treeTombstone);
+          await this.#advanceJournal(journal, "tree-tombstoned");
+          const movedTreeHash = await this.#journalTreeHash(
+            journal.treeTombstone,
+            "Managed uninstall tree tombstone"
+          );
+          if (movedTreeHash !== journal.treeHash) {
+            throw new StashError(
+              "managed-drift",
+              `Managed skill "${record.name}" changed during uninstall; its tombstone and recovery journal were preserved.`,
+              3
+            );
+          }
+        } else if (commitManagedType !== "missing") {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed path for "${record.name}" appeared before uninstall could commit.`,
+            3
+          );
+        }
+        const finalRecord = await this.#readRecord(record.name);
+        if (!finalRecord || !isDeepStrictEqual(finalRecord, record) || sha256(await readFile6(recordPath, "utf8")) !== journal.recordHash) {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed metadata for "${record.name}" changed during uninstall.`,
+            3
+          );
+        }
+        if (await pathType(managedPath) !== "missing") {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed path for "${record.name}" was repopulated during uninstall.`,
+            3
+          );
+        }
+        await rename2(recordPath, journal.recordTombstone);
+        await this.#advanceJournal(journal, "record-tombstoned");
+        await this.#journalRecordHash(
+          journal,
+          journal.recordTombstone,
+          "Managed uninstall record tombstone"
+        );
+        if (await pathType(recordPath) !== "missing") {
+          throw new StashError(
+            "managed-version-conflict",
+            `Managed record for "${record.name}" was repopulated during uninstall.`,
+            3
+          );
+        }
+        await this.#advanceJournal(journal, "cleanup-authorized");
+        committed = true;
+      } catch (error) {
+        if (!committed) {
+          await this.#recoverUninstallJournal(journal, journalPath);
+        }
+        throw error;
+      }
+      let warning = managedExisted ? void 0 : "The managed copy was already missing; its lifecycle record was removed.";
+      try {
+        await this.#recoverUninstallJournal(journal, journalPath);
+      } catch (error) {
+        const cleanupWarning = `Uninstall committed, but verified cleanup remains for recovery: ${String(error)}`;
+        warning = warning ? `${warning} ${cleanupWarning}` : cleanupWarning;
+      }
+      return {
+        status: "uninstalled",
+        name: record.name,
+        skillId: record.skillId,
+        managedPath,
+        treeHash: record.treeHash,
+        ...warning ? { warning } : {}
+      };
+    });
+  }
   async status(request = {}) {
     const recordsRoot = path8.join(this.#metadataRoot(), "records");
     let names;
@@ -11911,6 +12284,16 @@ function numberFlag(args, name) {
   }
   return parsed;
 }
+function rejectUnknownFlags(args, allowed) {
+  const unknown = [...args.flags.keys()].filter((name) => !allowed.has(name));
+  if (unknown.length > 0) {
+    throw new StashError(
+      "invalid-argument",
+      `Unknown option(s) for ${args.command}: ${unknown.map((name) => `--${name}`).join(", ")}.`,
+      2
+    );
+  }
+}
 function createOptions(args) {
   const root = flag(args, "root");
   const catalogId = flag(args, "root-id") ?? "default";
@@ -12059,6 +12442,7 @@ Usage:
   stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
+  stash uninstall <name> [--json]
   stash status [name] [--json]
 
 Configuration:
@@ -12338,6 +12722,24 @@ async function main() {
       const lifecycle = await createStashLifecycle(createOptions(args));
       const target = lifecycleTarget(args);
       const result = args.command === "activate" ? await lifecycle.activate({ name, target }) : await lifecycle.deactivate({ name, target });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "uninstall": {
+      rejectUnknownFlags(
+        args,
+        /* @__PURE__ */ new Set(["config", "managed-root", "json", "help"])
+      );
+      const name = args.positionals.join(" ").trim();
+      if (!name) {
+        throw new StashError(
+          "invalid-argument",
+          "uninstall requires a managed skill name.",
+          2
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const result = await lifecycle.uninstall({ name });
       json ? printJson(result) : printLifecycle(result);
       return;
     }

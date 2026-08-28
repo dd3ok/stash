@@ -77,6 +77,20 @@ function numberFlag(args: ParsedArguments, name: string): number | undefined {
   return parsed;
 }
 
+function rejectUnknownFlags(
+  args: ParsedArguments,
+  allowed: ReadonlySet<string>,
+): void {
+  const unknown = [...args.flags.keys()].filter((name) => !allowed.has(name));
+  if (unknown.length > 0) {
+    throw new StashError(
+      "invalid-argument",
+      `Unknown option(s) for ${args.command}: ${unknown.map((name) => `--${name}`).join(", ")}.`,
+      2,
+    );
+  }
+}
+
 function createOptions(args: ParsedArguments) {
   const root = flag(args, "root");
   const catalogId = flag(args, "root-id") ?? "default";
@@ -239,6 +253,7 @@ Usage:
   stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
+  stash uninstall <name> [--json]
   stash status [name] [--json]
 
 Configuration:
@@ -528,6 +543,24 @@ async function main(): Promise<void> {
         args.command === "activate"
           ? await lifecycle.activate({ name, target })
           : await lifecycle.deactivate({ name, target });
+      json ? printJson(result) : printLifecycle(result);
+      return;
+    }
+    case "uninstall": {
+      rejectUnknownFlags(
+        args,
+        new Set(["config", "managed-root", "json", "help"]),
+      );
+      const name = args.positionals.join(" ").trim();
+      if (!name) {
+        throw new StashError(
+          "invalid-argument",
+          "uninstall requires a managed skill name.",
+          2,
+        );
+      }
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const result = await lifecycle.uninstall({ name });
       json ? printJson(result) : printLifecycle(result);
       return;
     }

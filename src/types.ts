@@ -342,6 +342,10 @@ export interface LifecycleDeactivateRequest {
   target: LifecycleHostTarget;
 }
 
+export interface LifecycleUninstallRequest {
+  name: string;
+}
+
 export interface LifecycleStatusRequest {
   name?: string;
 }
@@ -351,6 +355,7 @@ export interface LifecycleMutationResult {
     | "stored"
     | "deployed"
     | "deactivated"
+    | "uninstalled"
     | "already-stored"
     | "already-deployed"
     | "updated"
@@ -410,6 +415,9 @@ export interface StashLifecycle {
   activate(request: LifecycleActivateRequest): Promise<LifecycleMutationResult>;
   deactivate(
     request: LifecycleDeactivateRequest,
+  ): Promise<LifecycleMutationResult>;
+  uninstall(
+    request: LifecycleUninstallRequest,
   ): Promise<LifecycleMutationResult>;
   status(request?: LifecycleStatusRequest): Promise<LifecycleStatusResult>;
 }

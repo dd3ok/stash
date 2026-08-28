@@ -1,6 +1,6 @@
 ---
 name: stash
-description: Explicitly search a local Agent Skills library or manage Stash-owned inactive skills. Use only when the user invokes `/stash:stash` to find, read, list, install, update, archive, activate, deactivate, or inspect a skill.
+description: Explicitly search a local Agent Skills library or manage Stash-owned inactive skills. Use only when the user invokes `/stash:stash` to find, read, list, install, update, archive, activate, deactivate, uninstall, or inspect a skill.
 disable-model-invocation: true
 ---
 
@@ -26,7 +26,7 @@ Classify the text after `/stash:stash`:
 | exact skill name, optionally followed by a task | `exact`, then `read` |
 | `find ...` or a task/topic without an exact name | `search`, then `read` when one skill is selected |
 | `status [name]` | lifecycle `status` |
-| `install`, `update`, `archive`, `activate`, or `deactivate` | [Lifecycle requests](#lifecycle-requests) |
+| `install`, `update`, `archive`, `activate`, `deactivate`, or `uninstall` | [Lifecycle requests](#lifecycle-requests) |
 
 Treat an author, repository, or source ID named by the user as `--source`. Keep
 an explicitly scoped request inside that source. Treat a slug-like skill name
@@ -82,7 +82,7 @@ a script does not authorize executing it.
 
 ## Lifecycle requests
 
-Before `install`, `update`, `archive`, `activate`, or `deactivate`, read
+Before `install`, `update`, `archive`, `activate`, `deactivate`, or `uninstall`, read
 [CLI-CONTRACT.md](references/CLI-CONTRACT.md) completely and follow its
 Lifecycle contract. It owns the mutation preconditions, remote provenance
 rules, bulk-update workflow, result meanings, and supported targets.
