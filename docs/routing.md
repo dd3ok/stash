@@ -21,6 +21,22 @@ GitHub repository URL supplies `owner/repository` and `repository` shortcuts.
 Ambiguous shortcuts return no matches; use the full recorded URL to disambiguate.
 Shortcuts apply to explicit source filters, not unscoped discovery or skill names.
 
+For GitHub HTTPS repository roots, shortcut identity is the lowercase
+`owner/repository`, excluding a terminal `.git` and optional trailing slash.
+All URL spellings belonging to that identity participate in the bundle; recorded
+provenance and explicit URL filters remain unchanged. Other origins, credentials,
+query strings, fragments, and non-root paths do not supply shortcuts. Trailing
+slash handling is a local matching policy, not general URL equivalence.
+
+This follows GitHub's [repository parameter documentation](https://docs.github.com/en/rest/repos/repos#get-a-repository)
+(case-insensitive owner/repository names without `.git`) and uses Node's
+[WHATWG URL API](https://nodejs.org/api/url.html#the-whatwg-url-api) to check origin
+and URL components. GitHub-specific rules are not applied to other providers.
+
+After selecting one or more bundle members, load each complete `SKILL.md` before
+applying its instructions. Metadata is for selection; supporting resources load
+on demand, following [Agent Skills progressive disclosure](https://agentskills.io/specification#progressive-disclosure).
+
 ## Relevant results
 
 ```text

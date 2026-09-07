@@ -8847,7 +8847,7 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
 }
 
 // src/internal/search.ts
-var ROUTING_PROFILE_VERSION = 5;
+var ROUTING_PROFILE_VERSION = 6;
 var FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -9193,27 +9193,42 @@ function matchesSource(record, selectors) {
   const identities = [record.source.id, record.source.displayName].filter((value) => value !== void 0).map(normalizeSourceIdentity);
   const sourceUrl = record.source.url ? normalizeSourceUrl(record.source.url) : void 0;
   return selectors.some(
-    (selector) => identities.includes(selector.identity) || selector.url !== void 0 && selector.url === sourceUrl
+    (selector) => identities.includes(selector.identity) || selector.url !== void 0 && selector.url === sourceUrl || sourceUrl !== void 0 && selector.repositoryUrls?.has(sourceUrl) === true
   );
 }
+function githubRepositoryIdentity(url) {
+  const parsed = new URL(url);
+  if (parsed.origin !== "https://github.com" || parsed.username || parsed.password || parsed.search || parsed.hash) return void 0;
+  const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
+  if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) {
+    return void 0;
+  }
+  const repository = parts[1].replace(/\.git$/iu, "");
+  if (!repository) return void 0;
+  return normalizeSourceIdentity(`${parts[0]}/${repository}`);
+}
 function resolveRepositorySelectors(records, selectors) {
+  let repositories;
   return selectors.map((selector) => {
     if (records.some((record) => matchesSource(record, [selector]))) return selector;
-    const candidates = /* @__PURE__ */ new Set();
-    for (const record of records) {
-      const url = record.source.url && normalizeSourceUrl(record.source.url);
-      if (!url) continue;
-      const parsed = new URL(url);
-      if (parsed.hostname !== "github.com" || parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash) continue;
-      const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
-      if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) continue;
-      const owner = parts[0];
-      const repository = parts[1].replace(/\.git$/u, "");
-      if ([repository, `${owner}/${repository}`].some(
-        (identity) => normalizeSourceIdentity(identity) === selector.identity
-      )) candidates.add(url);
+    if (selector.url !== void 0) return selector;
+    if (!repositories) {
+      repositories = /* @__PURE__ */ new Map();
+      const urls = new Set(records.map((record) => record.source.url));
+      for (const value of urls) {
+        const url = value && normalizeSourceUrl(value);
+        if (!url) continue;
+        const identity = githubRepositoryIdentity(url);
+        if (!identity) continue;
+        const variants = repositories.get(identity) ?? /* @__PURE__ */ new Set();
+        variants.add(url);
+        repositories.set(identity, variants);
+      }
     }
-    return candidates.size === 1 ? { ...selector, url: [...candidates][0] } : selector;
+    const candidates = [...repositories].filter(
+      ([identity]) => identity === selector.identity || identity.split("/")[1] === selector.identity
+    );
+    return candidates.length === 1 ? { ...selector, repositoryUrls: candidates[0][1] } : selector;
   });
 }
 function sourceSortKey(record) {

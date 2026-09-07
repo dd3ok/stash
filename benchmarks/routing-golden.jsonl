@@ -15,7 +15,7 @@
 {"id":"repository-name-discovers-all","kind":"search","query":"MengTo/Skills","expectedRelevant":["create-brand-world","design-game-encounters"]}
 {"id":"generic-repository-word-abstains","kind":"search","query":"skills","expectedRelevant":[]}
 {"id":"repository-filter-is-exact","kind":"search","query":"enemy waves arenas objectives boss phases","sources":["MengTo/Skills"],"expectedRelevant":["design-game-encounters"]}
-{"id":"unique-repository-shortcut-lists-bundle","kind":"list","sources":["Skills"],"expectedRelevant":["create-brand-world","design-game-encounters"]}
+{"id":"equivalent-url-repository-shortcut-lists-complete-bundle","kind":"list","sources":["Skills"],"expectedRelevant":["create-brand-world","design-game-encounters"]}
 {"id":"source-separator-is-significant","kind":"list","sources":["foo-bar"],"expectedRelevant":["hyphenated-source"]}
 {"id":"source-search-preserves-separator","kind":"search","query":"foo-bar","expectedRelevant":["hyphenated-source"]}
 {"id":"partial-source-token-does-not-activate","kind":"search","query":"foo","expectedRelevant":[]}

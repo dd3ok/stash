@@ -27,6 +27,9 @@ from `source.id`, `source.displayName`, `source.url`, `source.revision`, and
 When none matches, a unique GitHub repository URL also supports its repository
 name or `owner/repository`. Ambiguous shortcuts return `no-match`; retry with
 the full recorded URL. Punctuation remains significant.
+Shortcut identity folds GitHub owner/repository case, terminal `.git`, and a
+trailing slash. Equivalent spellings retain their original provenance URLs and
+are returned together. Explicit URL filters retain exact matching.
 
 ### Read statuses
 

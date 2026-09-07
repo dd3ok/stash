@@ -43,9 +43,12 @@ scoped request inside that source. Otherwise use exact skill lookup before searc
    `list --json`, resolve the user's spelling to a recorded identity, and retry
    with that exact identity. Ask when more than one source fits; retain the scope.
 3. Follow every page. With no task, report the bundle and its members. For a
-   task, select the narrowest sufficient member using its metadata; when the user
-   requests the entire bundle, read every member completely through `read` before
-   applying it. Bundle access does not require a wrapper skill or activation.
+   task, select the narrowest sufficient member using its metadata; select all
+   members when the user requests the entire bundle.
+4. For every selected member, run `node <stash-cli> read <ref> --format json`,
+   read `content` completely, then apply its instructions to the task. Read any
+   supporting resources only when those instructions require them. Bundle access
+   does not require a wrapper skill or a host deployment.
 
 An individual `exact` miss proves only that the name is not an individual skill.
 Complete source resolution before reporting that a repository bundle is unavailable.

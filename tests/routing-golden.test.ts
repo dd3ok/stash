@@ -70,7 +70,7 @@ aliases:
 source:
   id: mengto
   displayName: MengTo/Skills
-  url: https://github.com/MengTo/Skills
+  url: https://github.com/mengto/skills.git/
 `,
     },
     {

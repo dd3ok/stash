@@ -67,6 +67,7 @@ interface LoadedIndexes {
 interface NormalizedSourceSelector {
   identity: string;
   url?: string;
+  repositoryUrls?: ReadonlySet<string>;
 }
 
 function normalizeSourceSelector(source: string): NormalizedSourceSelector {
@@ -90,35 +91,54 @@ function matchesSource(
   return selectors.some(
     (selector) =>
       identities.includes(selector.identity) ||
-      (selector.url !== undefined && selector.url === sourceUrl),
+      (selector.url !== undefined && selector.url === sourceUrl) ||
+      (sourceUrl !== undefined && selector.repositoryUrls?.has(sourceUrl) === true),
   );
+}
+
+function githubRepositoryIdentity(url: string): string | undefined {
+  const parsed = new URL(url);
+  if (
+    parsed.origin !== "https://github.com" || parsed.username || parsed.password ||
+    parsed.search || parsed.hash
+  ) return undefined;
+  const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
+  if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) {
+    return undefined;
+  }
+  const repository = parts[1]!.replace(/\.git$/iu, "");
+  if (!repository) return undefined;
+  return normalizeSourceIdentity(`${parts[0]!}/${repository}`);
 }
 
 function resolveRepositorySelectors(
   records: SkillRecord[],
   selectors: NormalizedSourceSelector[],
 ): NormalizedSourceSelector[] {
+  // Build only for shorthand requests, parsing each distinct URL once per resolve.
+  let repositories: Map<string, Set<string>> | undefined;
   return selectors.map((selector) => {
-    // Explicit IDs, display names and URLs retain their existing precedence.
     if (records.some((record) => matchesSource(record, [selector]))) return selector;
-    const candidates = new Set<string>();
-    for (const record of records) {
-      const url = record.source.url && normalizeSourceUrl(record.source.url);
-      if (!url) continue;
-      const parsed = new URL(url);
-      if (parsed.hostname !== "github.com" || parsed.protocol !== "https:" ||
-          parsed.username || parsed.password || parsed.search || parsed.hash) continue;
-      const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
-      if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) continue;
-      const owner = parts[0]!;
-      const repository = parts[1]!.replace(/\.git$/u, "");
-      if ([repository, `${owner}/${repository}`].some(
-        (identity) => normalizeSourceIdentity(identity) === selector.identity,
-      )) candidates.add(url);
+    if (selector.url !== undefined) return selector;
+    if (!repositories) {
+      repositories = new Map();
+      const urls = new Set(records.map((record) => record.source.url));
+      for (const value of urls) {
+        const url = value && normalizeSourceUrl(value);
+        if (!url) continue;
+        const identity = githubRepositoryIdentity(url);
+        if (!identity) continue;
+        const variants = repositories.get(identity) ?? new Set<string>();
+        variants.add(url);
+        repositories.set(identity, variants);
+      }
     }
-    // An ambiguous shorthand must not silently combine unrelated repositories.
-    return candidates.size === 1
-      ? { ...selector, url: [...candidates][0]! }
+    const candidates = [...repositories].filter(([identity]) =>
+      identity === selector.identity || identity.split("/")[1] === selector.identity,
+    );
+    // Compare repository identities, retaining all original provenance URLs.
+    return candidates.length === 1
+      ? { ...selector, repositoryUrls: candidates[0]![1] }
       : selector;
   });
 }

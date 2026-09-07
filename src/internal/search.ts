@@ -27,7 +27,7 @@ interface SearchResult {
   expandedTerms: string[];
 }
 
-export const ROUTING_PROFILE_VERSION = 5 as const;
+export const ROUTING_PROFILE_VERSION = 6 as const;
 
 const FIELD_WEIGHTS = {
   name: 6,

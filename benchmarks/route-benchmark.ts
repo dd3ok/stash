@@ -35,6 +35,7 @@ const budgets = {
   indexMs: 10_000,
   exactP95Ms: 100,
   searchP95Ms: 500,
+  repositoryP95Ms: 100,
 };
 
 try {
@@ -51,6 +52,11 @@ try {
     await writeFile(
       path.join(directory, "SKILL.md"),
       `---\nname: ${name}\ndescription: ${brandTerms}\n---\n\n# ${name}\n`,
+      "utf8",
+    );
+    await writeFile(
+      path.join(directory, "stash.meta.yaml"),
+      "schemaVersion: 1\nsource:\n  url: https://github.com/benchmark/repository-bundle\n",
       "utf8",
     );
   }
@@ -74,6 +80,12 @@ try {
       pageSize: 200,
     }),
   );
+  const repository = await measure(50, async () => {
+    const result = await catalog.resolve({
+      kind: "list", sources: ["repository-bundle"], pageSize: 40,
+    });
+    if (result.totalRelevant !== 1_000) throw new Error("Incomplete repository bundle.");
+  });
   const result = {
     records: 1_000,
     indexMs: Number(indexMs.toFixed(2)),
@@ -85,6 +97,10 @@ try {
       p50Ms: Number(percentile(search, 50).toFixed(2)),
       p95Ms: Number(percentile(search, 95).toFixed(2)),
     },
+    repository: {
+      p50Ms: Number(percentile(repository, 50).toFixed(2)),
+      p95Ms: Number(percentile(repository, 95).toFixed(2)),
+    },
     budgets,
   };
 
@@ -94,7 +110,8 @@ try {
   if (
     result.indexMs > budgets.indexMs ||
     result.exact.p95Ms > budgets.exactP95Ms ||
-    result.search.p95Ms > budgets.searchP95Ms
+    result.search.p95Ms > budgets.searchP95Ms ||
+    result.repository.p95Ms > budgets.repositoryP95Ms
   ) {
     throw new Error("Routing benchmark exceeded the regression budget.");
   }
