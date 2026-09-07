@@ -94,6 +94,35 @@ function matchesSource(
   );
 }
 
+function resolveRepositorySelectors(
+  records: SkillRecord[],
+  selectors: NormalizedSourceSelector[],
+): NormalizedSourceSelector[] {
+  return selectors.map((selector) => {
+    // Explicit IDs, display names and URLs retain their existing precedence.
+    if (records.some((record) => matchesSource(record, [selector]))) return selector;
+    const candidates = new Set<string>();
+    for (const record of records) {
+      const url = record.source.url && normalizeSourceUrl(record.source.url);
+      if (!url) continue;
+      const parsed = new URL(url);
+      if (parsed.hostname !== "github.com" || parsed.protocol !== "https:" ||
+          parsed.username || parsed.password || parsed.search || parsed.hash) continue;
+      const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
+      if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) continue;
+      const owner = parts[0]!;
+      const repository = parts[1]!.replace(/\.git$/u, "");
+      if ([repository, `${owner}/${repository}`].some(
+        (identity) => normalizeSourceIdentity(identity) === selector.identity,
+      )) candidates.add(url);
+    }
+    // An ambiguous shorthand must not silently combine unrelated repositories.
+    return candidates.size === 1
+      ? { ...selector, url: [...candidates][0]! }
+      : selector;
+  });
+}
+
 function sourceSortKey(record: SkillRecord): string {
   if (record.source.id) {
     return `0:${normalizeSourceIdentity(record.source.id)}`;
@@ -212,13 +241,15 @@ class StashCatalogImplementation implements StashCatalog {
     }
 
     const group = request.group ? normalizeText(request.group) : undefined;
-    const sourceSelectors = (request.sources ?? []).map(
-      normalizeSourceSelector,
+    const availableRecords = loaded.indexes
+      .flatMap((index) => index.records)
+      .filter((record) => record.trust !== "quarantined");
+    const sourceSelectors = resolveRepositorySelectors(
+      availableRecords,
+      (request.sources ?? []).map(normalizeSourceSelector),
     );
     const hasSourceFilter = (request.sources?.length ?? 0) > 0;
-    const records = loaded.indexes
-      .flatMap((index) => index.records)
-      .filter((record) => record.trust !== "quarantined")
+    const records = availableRecords
       .filter(
         (record) =>
           !hasSourceFilter ||

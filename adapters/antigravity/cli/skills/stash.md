@@ -21,15 +21,33 @@ Classify the text after `/stash`:
 
 | Request | Route |
 |---|---|
+| author, repository, or bundle name, optionally followed by a task | [Source bundles](#source-bundles) |
 | `list`, source inventory, or group inventory | `list` with the supplied filters |
 | exact skill name, optionally followed by a task | `exact`, then `read` |
 | `find ...` or a task/topic without an exact name | `search`, then `read` when one skill is selected |
 | `status [name]` | lifecycle `status` |
 | `install`, `update`, `archive`, `activate`, `deactivate`, or `uninstall` | [Lifecycle requests](#lifecycle-requests) |
 
-Treat an author, repository, or source ID named by the user as `--source`. Keep
-an explicitly scoped request inside that source. Treat a slug-like skill name
-as exact before trying natural-language search.
+Resolve repository or bundle intent from the current request and conversation
+before interpreting a hyphenated name as an individual skill. Keep an explicitly
+scoped request inside that source. Otherwise use exact skill lookup before search.
+
+### Source bundles
+
+1. Run `node <stash-cli> list --source <source> --json`. A source can be its
+   registered ID, display name, URL, or a unique GitHub repository name such as
+   `frontend-fundamentals` or `toss/frontend-fundamentals`.
+2. On `no-match`, retry with the verified repository URL from the conversation.
+   If the source is still unresolved, inspect source metadata through paginated
+   `list --json`, resolve the user's spelling to a recorded identity, and retry
+   with that exact identity. Ask when more than one source fits; retain the scope.
+3. Follow every page. With no task, report the bundle and its members. For a
+   task, select the narrowest sufficient member using its metadata; when the user
+   requests the entire bundle, read every member completely through `read` before
+   applying it. Bundle access does not require a wrapper skill or activation.
+
+An individual `exact` miss proves only that the name is not an individual skill.
+Complete source resolution before reporting that a repository bundle is unavailable.
 
 ## Find and read skills
 

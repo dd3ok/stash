@@ -23,7 +23,10 @@ pagination, or a failure.
 Relevant tiers are `exact`, `strong`, and `material`. `possible` is weak
 diagnostic evidence and is excluded by default. Preserve source attribution
 from `source.id`, `source.displayName`, `source.url`, `source.revision`, and
-`source.license`. `--source <id|name|url>` is an exact provenance filter.
+`source.license`. `--source <id|name|url>` first matches explicit provenance.
+When none matches, a unique GitHub repository URL also supports its repository
+name or `owner/repository`. Ambiguous shortcuts return `no-match`; retry with
+the full recorded URL. Punctuation remains significant.
 
 ### Read statuses
 

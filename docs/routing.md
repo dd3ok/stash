@@ -16,6 +16,10 @@ signals, or one specific term in a high-value field. Weak generic matches stay
 
 Use `--source` when the user names an author or repository. Source comparison
 is Unicode- and case-normalized but preserves punctuation.
+Explicit IDs, display names and URLs take precedence. If none matches, a unique
+GitHub repository URL supplies `owner/repository` and `repository` shortcuts.
+Ambiguous shortcuts return no matches; use the full recorded URL to disambiguate.
+Shortcuts apply to explicit source filters, not unscoped discovery or skill names.
 
 ## Relevant results
 

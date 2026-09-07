@@ -8847,7 +8847,7 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
 }
 
 // src/internal/search.ts
-var ROUTING_PROFILE_VERSION = 4;
+var ROUTING_PROFILE_VERSION = 5;
 var FIELD_WEIGHTS = {
   name: 6,
   alias: 6,
@@ -9196,6 +9196,26 @@ function matchesSource(record, selectors) {
     (selector) => identities.includes(selector.identity) || selector.url !== void 0 && selector.url === sourceUrl
   );
 }
+function resolveRepositorySelectors(records, selectors) {
+  return selectors.map((selector) => {
+    if (records.some((record) => matchesSource(record, [selector]))) return selector;
+    const candidates = /* @__PURE__ */ new Set();
+    for (const record of records) {
+      const url = record.source.url && normalizeSourceUrl(record.source.url);
+      if (!url) continue;
+      const parsed = new URL(url);
+      if (parsed.hostname !== "github.com" || parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash) continue;
+      const parts = parsed.pathname.replace(/\/$/u, "").split("/").slice(1);
+      if (parts.length !== 2 || parts.some((part) => !/^[\w.-]+$/u.test(part))) continue;
+      const owner = parts[0];
+      const repository = parts[1].replace(/\.git$/u, "");
+      if ([repository, `${owner}/${repository}`].some(
+        (identity) => normalizeSourceIdentity(identity) === selector.identity
+      )) candidates.add(url);
+    }
+    return candidates.size === 1 ? { ...selector, url: [...candidates][0] } : selector;
+  });
+}
 function sourceSortKey(record) {
   if (record.source.id) {
     return `0:${normalizeSourceIdentity(record.source.id)}`;
@@ -9291,11 +9311,13 @@ var StashCatalogImplementation = class {
       throw error;
     }
     const group = request.group ? normalizeText(request.group) : void 0;
-    const sourceSelectors = (request.sources ?? []).map(
-      normalizeSourceSelector
+    const availableRecords = loaded.indexes.flatMap((index) => index.records).filter((record) => record.trust !== "quarantined");
+    const sourceSelectors = resolveRepositorySelectors(
+      availableRecords,
+      (request.sources ?? []).map(normalizeSourceSelector)
     );
     const hasSourceFilter = (request.sources?.length ?? 0) > 0;
-    const records = loaded.indexes.flatMap((index) => index.records).filter((record) => record.trust !== "quarantined").filter(
+    const records = availableRecords.filter(
       (record) => !hasSourceFilter || matchesSource(record, sourceSelectors)
     ).filter(
       (record) => !group || normalizeText(record.group ?? "") === group || normalizeText(record.group ?? "").startsWith(`${group} `)
