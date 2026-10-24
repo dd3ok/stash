@@ -19,13 +19,16 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 - Destructive operations apply only to explicitly selected standalone skills
   or recorded deployments. Untracked and drifted deployments are preserved.
 - Archive recovery is journaled. A rollback never overwrites an occupied source
-  path, and a committed tombstone is deleted only after its tree hash matches.
+  path, and a committed tombstone is recycled only after its tree hash matches.
 - Managed update recovery rechecks record/tree state at commit time, preserves a
-  drifted previous tree during rollback, and recursively removes only an exact
+  drifted previous tree during rollback, and recycles only an exact
   operation-owned path after journal authorization.
 - Managed uninstall requires zero deployment records, rechecks a present tree
-  after its same-root rename, and removes only that verified managed tree and
+  after its same-root rename, and recycles only that verified managed tree and
   lifecycle record. Interrupted cleanup remains journaled.
+- Discarded skill trees go to the OS trash. If recycling is unavailable, cleanup
+  reports the failure and retains the remaining path; it never falls back to
+  permanent deletion. Transient lock and journal files use atomic cleanup.
 - Remote managed provenance uses a canonical repository URL, caller-resolved
   immutable revision, exact case-sensitive repository-relative skill path, and
   exact `HEAD`, `refs/heads/...`, or `refs/tags/...` tracking ref. These four
@@ -54,7 +57,9 @@ Stash discovers, reads, and explicitly stores local Agent Skills. A skill can co
 - `trusted` does not replace host sandboxing or approval.
 - Stash does not sandbox scripts executed later by a host agent.
 - A well-formed skill can still contain malicious or misleading instructions.
-- Lexical relevance is not a security classifier.
+- Model-selected relevance and local classification are not security judgments.
+- Outside edits are visible to lists after refresh; selected reads still check
+  current quarantine, containment and content hashes.
 - `deployed` means present in a host discovery root; it does not prove that a
   host enable/disable override is enabled.
 - Plugin lifecycle and vendor setting changes are outside Stash lifecycle.

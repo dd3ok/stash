@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Replace lexical ranking, query equivalences and alias configuration with
+  literal list filters and host-agent selection. Result/config schemas are 2;
+  package version is 0.3.0. No compatibility commands or config adapters remain.
+- Consolidate local classification into hash-bound managed metadata, expose
+  `classify`, and replace per-catalog TTL caches with one mutation-invalidated
+  snapshot. Outside edits use explicit `refresh`.
+- Default internal lists to 50 compact cards and user-facing candidates to 10;
+  preserve exact refs, user selection and guarded lifecycle behavior.
+
 - Reduce the portable skill and human guides to progressive, single-owner
   documentation; make `stash --help` succeed and keep benchmarks and vendor
   validation off unrelated pull-request paths.

@@ -1,67 +1,26 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
-import type {
-  CatalogIndex,
-  CatalogRegistration,
-  CreateStashCatalogOptions,
-  DoctorRequest,
-  DoctorResult,
-  ReadRequest,
-  ReadResult,
-  RefreshRequest,
-  RefreshResult,
-  ResolveRequest,
-  ResolveResult,
-  ResolvedSkill,
-  SkillRecord,
-  StashCatalog,
-} from "./types.js";
-import {
-  INDEX_SCHEMA_VERSION,
-  RESULT_SCHEMA_VERSION,
-  StashError,
-} from "./types.js";
+import type { CatalogIndex, CatalogRegistration, CreateStashCatalogOptions, DoctorRequest, DoctorResult, ReadRequest, ReadResult, RefreshRequest, RefreshResult, ResolveRequest, ResolveResult, ResolvedSkill, SkillRecord, StashCatalog } from "./types.js";
+import { INDEX_SCHEMA_VERSION, RESULT_SCHEMA_VERSION, StashError } from "./types.js";
 import { loadConfiguration } from "./internal/configuration.js";
-import {
-  loadCatalogIndex,
-  scanCatalog,
-  writeFreshIndex,
-} from "./internal/catalog-index.js";
+import { scanCatalog } from "./internal/catalog-index.js";
+import { loadSnapshot } from "./internal/catalog-snapshot.js";
 import { projectManagedCopies } from "./internal/managed-projection.js";
-import {
-  ROUTING_PROFILE_VERSION,
-  searchRecords,
-  toListedSkill,
-  toResolvedSkill,
-} from "./internal/search.js";
-import {
-  clampPageSize,
-  compactText,
-  decodeCursor,
-  encodeCursor,
-  isPathInside,
-  mediaTypeFor,
-  normalizeRelativePath,
-  normalizeSourceIdentity,
-  normalizeSourceUrl,
-  normalizeText,
-  sha256,
-  sha256File,
-} from "./internal/util.js";
+import { classifyIndexes, readClassifications } from "./internal/classification.js";
+import { clampPageSize, compactDescription, decodeCursor, encodeCursor, isPathInside, mediaTypeFor, normalizeRelativePath, normalizeSourceIdentity, normalizeSourceUrl, sha256, sha256File, sourceDisplayName } from "./internal/util.js";
 
-interface CursorPayload extends Record<string, unknown> {
-  version: 1;
-  routingProfileVersion: typeof ROUTING_PROFILE_VERSION;
-  fingerprint: string;
-  requestHash: string;
-  offset: number;
-}
+const literal = (value: string): string => value.normalize("NFKC").toLocaleLowerCase("und").trim();
 
-interface LoadedIndexes {
-  indexes: CatalogIndex[];
-  registrations: CatalogRegistration[];
-  warnings: CatalogIndex["warnings"];
-  fingerprint: string;
+function toListedSkill(record: SkillRecord): ResolvedSkill {
+  return {
+    ref: record.ref, catalogId: record.catalogId, name: record.name,
+    description: record.purpose ?? compactDescription(record.description),
+    ...(record.group ? { group: record.group } : {}),
+    compatibility: record.compatibility, trust: record.trust,
+    source: record.source, contentHash: record.contentHash,
+    ...(record.managedSkillId ? { managedSkillId: record.managedSkillId } : {}),
+    ...(record.relatedCopies?.length ? { relatedCopies: record.relatedCopies } : {}),
+  };
 }
 
 interface NormalizedSourceSelector {
@@ -159,375 +118,134 @@ function sourceSortKey(record: SkillRecord): string {
   return "3:";
 }
 
+function summarizeList(records: SkillRecord[]): NonNullable<ResolveResult["summary"]> {
+  const catalogs = new Map<string, number>();
+  const groups = new Map<string, number>();
+  const sources = new Map<string, {
+    label: string; url?: string; count: number; catalogs: Set<string>; groups: Set<string>;
+  }>();
+  for (const record of records) {
+    catalogs.set(record.catalogId, (catalogs.get(record.catalogId) ?? 0) + 1);
+    const group = record.group ?? "(ungrouped)";
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+    const normalizedUrl = record.source.url && normalizeSourceUrl(record.source.url);
+    const repository = normalizedUrl ? githubRepositoryIdentity(normalizedUrl) : undefined;
+    const key = repository ? `github:${repository}`
+      : record.source.url ? `url:${normalizedUrl ?? record.source.url}`
+      : record.source.id ? `id:${record.source.id}`
+      : record.source.displayName ? `name:${record.source.displayName}` : "unattributed";
+    const current = sources.get(key) ?? {
+      label: sourceDisplayName(record.source),
+      ...(record.source.url ? { url: record.source.url } : {}),
+      count: 0, catalogs: new Set<string>(), groups: new Set<string>(),
+    };
+    current.count++;
+    current.catalogs.add(record.catalogId);
+    current.groups.add(group);
+    sources.set(key, current);
+  }
+  const byCountThenName = (
+    left: { count: number; name: string },
+    right: { count: number; name: string },
+  ) => right.count - left.count || left.name.localeCompare(right.name, "en");
+  return {
+    catalogs: [...catalogs].map(([name, count]) => ({ name, count })).sort(byCountThenName),
+    groups: [...groups].map(([name, count]) => ({ name, count })).sort(byCountThenName),
+    sources: [...sources.values()].map((source) => ({
+      label: source.label,
+      ...(source.url ? { url: source.url } : {}),
+      count: source.count,
+      catalogs: [...source.catalogs].sort((a, b) => a.localeCompare(b, "en")),
+      groups: [...source.groups].sort((a, b) => a.localeCompare(b, "en")),
+    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "en")),
+  };
+}
+
+
 class StashCatalogImplementation implements StashCatalog {
   readonly #configuration;
   readonly #cacheDir: string;
   readonly #now: () => number;
 
-  constructor(
-    configuration: Awaited<ReturnType<typeof loadConfiguration>>["configuration"],
-    cacheDir: string,
-    now: () => number,
-  ) {
+  constructor(configuration: Awaited<ReturnType<typeof loadConfiguration>>["configuration"], cacheDir: string, now: () => number) {
     this.#configuration = configuration;
     this.#cacheDir = cacheDir;
     this.#now = now;
   }
 
-  async #loadIndexes(
-    catalogIds?: string[],
-    applyManagedProjection = true,
-  ): Promise<LoadedIndexes> {
-    const selected = this.#selectRegistrations(catalogIds);
-    const indexes: CatalogIndex[] = [];
-    for (const catalog of selected) {
-      const loaded = await loadCatalogIndex(
-        catalog,
-        this.#cacheDir,
-        this.#configuration.defaults.cacheTtlMs,
-        this.#now,
-      );
-      indexes.push(loaded.index);
-    }
-    const projected = applyManagedProjection
-      ? await projectManagedCopies(indexes, this.#configuration.managedRoot)
-      : { indexes, fingerprintPart: "" };
-    return {
-      indexes: projected.indexes,
-      registrations: selected,
-      warnings: projected.indexes.flatMap((index) => index.warnings),
-      fingerprint: sha256(
-        [
-          ...projected.indexes.map(
-            (index) => `${index.catalogId}:${index.fingerprint}`,
-          ),
-          projected.fingerprintPart,
-        ]
-          .sort()
-          .join("\n"),
-      ),
-    };
-  }
-
   #selectRegistrations(catalogIds?: string[]): CatalogRegistration[] {
-    const enabled = this.#configuration.catalogs.filter(
-      (catalog) => catalog.enabled !== false,
-    );
-    if (!catalogIds || catalogIds.length === 0) {
-      return enabled;
+    const enabled = this.#configuration.catalogs.filter(c => c.enabled !== false);
+    if (!catalogIds?.length) return enabled;
+    if (catalogIds.some(id => !enabled.some(c => c.id === id))) {
+      throw new StashError("catalog-unavailable", "Unknown or disabled catalog.", 4);
     }
-    const requested = new Set(catalogIds);
-    const selected = enabled.filter((catalog) => requested.has(catalog.id));
-    const missing = [...requested].filter(
-      (id) => !selected.some((catalog) => catalog.id === id),
-    );
-    if (missing.length > 0) {
-      throw new StashError(
-        "catalog-unavailable",
-        `Unknown or disabled catalog(s): ${missing.join(", ")}.`,
-        4,
-      );
-    }
-    return selected;
+    return enabled.filter(c => catalogIds.includes(c.id));
   }
 
   async resolve(request: ResolveRequest): Promise<ResolveResult> {
     const started = this.#now();
-    let loaded: LoadedIndexes;
-    try {
-      loaded = await this.#loadIndexes(request.catalogIds);
-    } catch (error) {
-      if (
-        error instanceof StashError &&
-        error.code === "catalog-unavailable"
-      ) {
-        return {
-          schemaVersion: RESULT_SCHEMA_VERSION,
-          status: "catalog-unavailable",
-          mode: request.kind,
-          totalRelevant: 0,
-          totalPossible: 0,
-          page: { size: 0 },
-          matches: [],
-          diagnostics: {
-            indexVersion: INDEX_SCHEMA_VERSION,
-            stale: false,
-            elapsedMs: this.#now() - started,
-            warnings: [{ code: error.code, message: error.message }],
-          },
-        };
-      }
-      throw error;
-    }
-
-    const group = request.group ? normalizeText(request.group) : undefined;
-    const availableRecords = loaded.indexes
-      .flatMap((index) => index.records)
-      .filter((record) => record.trust !== "quarantined");
-    const sourceSelectors = resolveRepositorySelectors(
-      availableRecords,
-      (request.sources ?? []).map(normalizeSourceSelector),
-    );
-    const hasSourceFilter = (request.sources?.length ?? 0) > 0;
-    const records = availableRecords
-      .filter(
-        (record) =>
-          !hasSourceFilter ||
-          matchesSource(record, sourceSelectors),
-      )
-      .filter(
-        (record) =>
-          !group ||
-          normalizeText(record.group ?? "") === group ||
-          normalizeText(record.group ?? "").startsWith(`${group} `),
-      );
-
-    switch (request.kind) {
-      case "exact":
-        return this.#resolveExact(
-          request.name,
-          records,
-          loaded,
-          started,
-        );
-      case "list":
-        return this.#resolveList(request, records, loaded, started);
-      case "search":
-        return this.#resolveSearch(request, records, loaded, started);
-    }
-  }
-
-  #resolveExact(
-    name: string,
-    records: SkillRecord[],
-    loaded: LoadedIndexes,
-    started: number,
-  ): ResolveResult {
-    const normalized = compactText(name);
-    if (!normalized) {
-      return this.#emptyResult("exact", "invalid-request", loaded, started);
-    }
-    const matches = records.filter(
-      (record) =>
-        compactText(record.name) === normalized ||
-        record.aliases.some((alias) => compactText(alias) === normalized),
-    );
-    const resolved = matches.map((record) => {
-      const skill = toListedSkill(record);
-      skill.relevance = {
-        tier: "exact",
-        score: 1,
-        reasons: [
-          {
-            kind:
-              compactText(record.name) === normalized ? "name" : "alias",
-            value: name,
-          },
-        ],
-      };
-      return skill;
-    });
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status:
-        resolved.length === 0
-          ? "no-match"
-          : resolved.length > 1
-            ? "ambiguous-exact"
-            : "ok",
-      mode: "exact",
-      totalRelevant: resolved.length,
-      totalPossible: 0,
-      page: { size: resolved.length },
-      matches: resolved,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...(loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}),
-      },
+    const result: ResolveResult = {
+      schemaVersion: RESULT_SCHEMA_VERSION, status: "ok", mode: request.kind,
+      total: 0, page: { size: 0 }, matches: [],
+      diagnostics: { indexVersion: INDEX_SCHEMA_VERSION, elapsedMs: 0 },
     };
-  }
-
-  #resolveList(
-    request: Extract<ResolveRequest, { kind: "list" }>,
-    records: SkillRecord[],
-    loaded: LoadedIndexes,
-    started: number,
-  ): ResolveResult {
-    const sorted = [...records].sort(
-      (left, right) =>
-        sourceSortKey(left).localeCompare(sourceSortKey(right), "en") ||
-        left.catalogId.localeCompare(right.catalogId, "en") ||
-        (left.group ?? "").localeCompare(right.group ?? "", "en") ||
-        left.name.localeCompare(right.name, "en") ||
-        left.ref.localeCompare(right.ref, "en"),
-    );
-    const requestHash = sha256(
-      JSON.stringify({
-        kind: request.kind,
-        catalogIds: request.catalogIds ?? [],
-        sources: request.sources ?? [],
-        group: request.group ?? "",
-      }),
-    );
-    const paged = this.#page(
-      sorted.map(toListedSkill),
-      request.cursor,
-      request.pageSize,
-      loaded.fingerprint,
-      requestHash,
-    );
-    if (paged.status === "cursor-stale") {
-      return this.#emptyResult("list", "cursor-stale", loaded, started);
-    }
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status: sorted.length > 0 ? "ok" : "no-match",
-      mode: "list",
-      totalRelevant: sorted.length,
-      totalPossible: 0,
-      page: {
-        size: paged.matches.length,
-        ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}),
-      },
-      matches: paged.matches,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...(loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}),
-      },
+    const finish = (status: ResolveResult["status"] = result.status): ResolveResult => {
+      result.status = status;
+      result.diagnostics.elapsedMs = this.#now() - started;
+      return result;
     };
-  }
-
-  #resolveSearch(
-    request: Extract<ResolveRequest, { kind: "search" }>,
-    records: SkillRecord[],
-    loaded: LoadedIndexes,
-    started: number,
-  ): ResolveResult {
-    if (!normalizeText(request.query)) {
-      return this.#emptyResult("search", "invalid-request", loaded, started);
+    if (!request || !["exact", "list"].includes(request.kind)) return finish("invalid-request");
+    let selected: CatalogRegistration[];
+    try { selected = this.#selectRegistrations(request.catalogIds); }
+    catch (error) { if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable"); throw error; }
+    let snapshot;
+    try { snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now); }
+    catch (error) { if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable"); throw error; }
+    result.diagnostics.snapshotAt = snapshot.generatedAt;
+    const warnings = [...snapshot.warnings, ...snapshot.indexes.flatMap(index => index.warnings)];
+    if (warnings.length) result.diagnostics.warnings = warnings;
+    const available = [...snapshot.indexes.flatMap(index => index.records),
+      ...(request.catalogIds?.length || (request.kind === "exact" && request.name.includes(":")) ? snapshot.copies : [])]
+      .filter(record => record.trust !== "quarantined");
+    const sources = resolveRepositorySelectors(available, (request.sources ?? []).map(normalizeSourceSelector));
+    const groups = (request.groups ?? []).map(literal);
+    let records = available.filter(record =>
+      selected.some(c => c.id === record.catalogId) &&
+      (!sources.length || matchesSource(record, sources)) &&
+      (!groups.length || groups.includes(literal(record.group ?? "(ungrouped)"))));
+    if (request.kind === "exact") {
+      const name = literal(request.name);
+      if (!name) return finish("invalid-request");
+      records = records.filter(record => literal(record.name) === name || literal(record.ref) === name);
+      result.matches = records.map(record => ({ ...toListedSkill(record), description: record.description }));
+      result.total = result.matches.length;
+      result.page.size = result.total;
+      return finish(result.total > 1 ? "ambiguous-exact" : result.total ? "ok" : "no-match");
     }
-    const searched = searchRecords(
-      records,
-      request.query,
-      this.#configuration.defaults.materialScoreThreshold,
-    );
-    const displayed = request.includePossible
-      ? [...searched.relevant, ...searched.possible]
-      : searched.relevant;
-    const requestHash = sha256(
-      JSON.stringify({
-        kind: request.kind,
-        query: normalizeText(request.query),
-        catalogIds: request.catalogIds ?? [],
-        sources: request.sources ?? [],
-        group: request.group ?? "",
-        includePossible: request.includePossible ?? false,
-      }),
-    );
-    const paged = this.#page(
-      displayed.map(toResolvedSkill),
-      request.cursor,
-      request.pageSize,
-      loaded.fingerprint,
-      requestHash,
-    );
-    if (paged.status === "cursor-stale") {
-      return this.#emptyResult("search", "cursor-stale", loaded, started);
-    }
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status: searched.relevant.length > 0 ? "ok" : "no-match",
-      mode: "search",
-      totalRelevant: searched.relevant.length,
-      totalPossible: searched.possible.length,
-      page: {
-        size: paged.matches.length,
-        ...(paged.nextCursor ? { nextCursor: paged.nextCursor } : {}),
-      },
-      matches: paged.matches,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        expandedTerms: searched.expandedTerms,
-        ...(loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}),
-      },
-    };
-  }
-
-  #page(
-    matches: ResolvedSkill[],
-    cursor: string | undefined,
-    requestedPageSize: number | undefined,
-    fingerprint: string,
-    requestHash: string,
-  ):
-    | { status: "ok"; matches: ResolvedSkill[]; nextCursor?: string }
-    | { status: "cursor-stale"; matches: [] } {
-    const pageSize = clampPageSize(
-      requestedPageSize,
-      this.#configuration.defaults.pageSize,
-    );
+    const text = literal(request.text ?? "");
+    if (request.text !== undefined && !text) return finish("invalid-request");
+    records = records.filter(record => !text ||
+      [record.name, record.description, record.purpose ?? "", record.source.id ?? "", record.source.displayName ?? "", record.source.url ?? ""]
+        .some(field => literal(field).includes(text)));
+    records.sort((a, b) => (a.group ?? "").localeCompare(b.group ?? "", "en") ||
+      sourceSortKey(a).localeCompare(sourceSortKey(b), "en") || a.name.localeCompare(b.name, "en") || a.ref.localeCompare(b.ref, "en"));
+    result.total = records.length;
+    result.summary = summarizeList(records);
+    const requestHash = sha256(JSON.stringify({ catalogIds: request.catalogIds ?? [], sources: request.sources ?? [], groups, text }));
     let offset = 0;
-    if (cursor) {
-      const payload = decodeCursor<CursorPayload>(cursor);
-      if (
-        !payload ||
-        payload.version !== 1 ||
-        payload.routingProfileVersion !== ROUTING_PROFILE_VERSION ||
-        payload.fingerprint !== fingerprint ||
-        payload.requestHash !== requestHash ||
-        !Number.isInteger(payload.offset) ||
-        payload.offset < 0
-      ) {
-        return { status: "cursor-stale", matches: [] };
+    if (request.cursor) {
+      const cursor = decodeCursor<{version: number; fingerprint: string; requestHash: string; offset: number}>(request.cursor);
+      if (!cursor || cursor.version !== 2 || cursor.fingerprint !== snapshot.fingerprint ||
+          cursor.requestHash !== requestHash || !Number.isInteger(cursor.offset) || cursor.offset < 0 || cursor.offset > records.length) {
+        return finish("cursor-stale");
       }
-      offset = payload.offset;
+      offset = cursor.offset;
     }
-    const pageMatches = matches.slice(offset, offset + pageSize);
-    const nextOffset = offset + pageMatches.length;
-    return {
-      status: "ok",
-      matches: pageMatches,
-      ...(nextOffset < matches.length
-        ? {
-            nextCursor: encodeCursor({
-              version: 1,
-              routingProfileVersion: ROUTING_PROFILE_VERSION,
-              fingerprint,
-              requestHash,
-              offset: nextOffset,
-            }),
-          }
-        : {}),
-    };
-  }
-
-  #emptyResult(
-    mode: ResolveResult["mode"],
-    status: ResolveResult["status"],
-    loaded: LoadedIndexes,
-    started: number,
-  ): ResolveResult {
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status,
-      mode,
-      totalRelevant: 0,
-      totalPossible: 0,
-      page: { size: 0 },
-      matches: [],
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...(loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}),
-      },
-    };
+    const size = clampPageSize(request.pageSize, this.#configuration.defaults.pageSize);
+    result.matches = records.slice(offset, offset + size).map(toListedSkill);
+    result.page.size = result.matches.length;
+    if (offset + size < records.length) result.page.nextCursor = encodeCursor({ version: 2, fingerprint: snapshot.fingerprint, requestHash, offset: offset + size });
+    return finish(records.length ? "ok" : "no-match");
   }
 
   async read(request: ReadRequest): Promise<ReadResult> {
@@ -541,10 +259,12 @@ class StashCatalogImplementation implements StashCatalog {
         resource,
       };
     }
-    const loaded = await this.#loadIndexes(undefined, false);
+    const registrations = this.#configuration.catalogs.filter(c => c.enabled !== false && c.id === request.ref.split(":")[0]);
+    const indexes: CatalogIndex[] = [];
+    for (const catalog of registrations) indexes.push((await scanCatalog(catalog, this.#now)).index);
     let record: SkillRecord | undefined;
     let index: CatalogIndex | undefined;
-    for (const candidateIndex of loaded.indexes) {
+    for (const candidateIndex of indexes) {
       const candidate = candidateIndex.records.find(
         (item) => item.ref === request.ref,
       );
@@ -689,95 +409,53 @@ class StashCatalogImplementation implements StashCatalog {
     };
   }
 
+
   async refresh(request: RefreshRequest = {}): Promise<RefreshResult> {
-    const registrations = this.#selectRegistrations(request.catalogIds);
-    const results: RefreshResult["catalogs"] = [];
-    let failed = 0;
-    for (const catalog of registrations) {
-      try {
-        const index = await writeFreshIndex(
-          catalog,
-          this.#cacheDir,
-          this.#now,
-        );
-        results.push({
-          catalogId: catalog.id,
-          indexed: index.records.length,
-          skipped: index.warnings.filter(
-            (warning) => warning.code === "invalid-skill",
-          ).length,
-          warnings: index.warnings,
-        });
-      } catch (error) {
-        failed += 1;
-        results.push({
-          catalogId: catalog.id,
-          indexed: 0,
-          skipped: 0,
-          warnings: [
-            {
-              code: "refresh-failed",
-              message: String(error),
-            },
-          ],
-        });
-      }
-    }
+    const selected = this.#selectRegistrations(request.catalogIds);
+    // Rebuild the aggregate snapshot atomically; scoped output never produces a partial cache.
+    const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now, true);
     return {
-      status:
-        failed === 0 ? "ok" : failed === registrations.length ? "failed" : "partial",
-      catalogs: results,
+      status: "ok",
+      catalogs: snapshot.indexes.filter(index => selected.some(c => c.id === index.catalogId)).map(index => ({
+        catalogId: index.catalogId, indexed: index.records.length,
+        skipped: index.warnings.filter(w => w.code === "invalid-skill").length, warnings: index.warnings,
+      })),
     };
   }
 
   async doctor(request: DoctorRequest = {}): Promise<DoctorResult> {
-    const registrations = this.#selectRegistrations(request.catalogIds);
+    const selected = this.#selectRegistrations(request.catalogIds);
+    const indexes: CatalogIndex[] = [];
     const results: DoctorResult["catalogs"] = [];
     let failed = 0;
-    for (const catalog of registrations) {
+    for (const catalog of selected) {
       try {
-        const scanned = await scanCatalog(catalog, this.#now);
-        results.push({
-          catalogId: catalog.id,
-          root: scanned.index.root,
-          records: scanned.index.records.length,
-          warnings: scanned.index.warnings,
-          fingerprint: scanned.index.fingerprint,
-        });
+        const { index } = await scanCatalog(catalog, this.#now);
+        indexes.push(index);
+        results.push({ catalogId: catalog.id, root: index.root, records: index.records.length, warnings: index.warnings, fingerprint: index.fingerprint });
       } catch (error) {
-        failed += 1;
-        results.push({
-          catalogId: catalog.id,
-          root: catalog.root,
-          records: 0,
-          warnings: [{ code: "doctor-failed", message: String(error) }],
-          fingerprint: "",
-        });
+        failed++;
+        results.push({ catalogId: catalog.id, root: catalog.root, records: 0, warnings: [{code: "doctor-failed", message: String(error)}], fingerprint: "" });
       }
     }
-    const warningCount = results.reduce(
-      (sum, result) => sum + result.warnings.length,
-      0,
-    );
+    const projected = await projectManagedCopies(indexes, this.#configuration.managedRoot);
+    const classified = classifyIndexes(projected.indexes, await readClassifications(this.#configuration.managedRoot));
+    const records = classified.indexes.flatMap(index => index.records).filter(record => record.trust !== "quarantined");
+    for (const result of results) result.warnings = classified.indexes.find(index => index.catalogId === result.catalogId)?.warnings ?? result.warnings;
     return {
-      status:
-        failed === registrations.length
-          ? "failed"
-          : failed > 0 || warningCount > 0
-            ? "warning"
-            : "ok",
+      status: failed && failed === selected.length ? "failed" : failed || classified.warnings.length || results.some(r => r.warnings.length) ? "warning" : "ok",
       catalogs: results,
+      coverage: {
+        total: records.length,
+        uncategorized: records.filter(record => !record.group).map(record => record.ref).sort(),
+        unattributed: records.filter(record => !record.source.id && !record.source.displayName && !record.source.url).map(record => record.ref).sort(),
+      },
+      ...(classified.warnings.length ? { warnings: classified.warnings } : {}),
     };
   }
 }
 
-export async function createStashCatalog(
-  options: CreateStashCatalogOptions = {},
-): Promise<StashCatalog> {
+export async function createStashCatalog(options: CreateStashCatalogOptions = {}): Promise<StashCatalog> {
   const loaded = await loadConfiguration(options);
-  return new StashCatalogImplementation(
-    loaded.configuration,
-    loaded.cacheDir,
-    options.now ?? Date.now,
-  );
+  return new StashCatalogImplementation(loaded.configuration, loaded.cacheDir, options.now ?? Date.now);
 }

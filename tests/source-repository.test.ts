@@ -3,7 +3,7 @@ import test from "node:test";
 import { createStashCatalog } from "../src/stash-catalog.js";
 import { createCatalogFixture } from "./helpers.js";
 
-test("URL-only repository bundles resolve by unique short name across list, exact and search", async () => {
+test("URL-only repository bundles resolve by unique short name across list and exact", async () => {
   const names = ["cohesion", "coupling", "predictability", "readability"];
   const fixture = await createCatalogFixture(names.map((name) => ({
     group: "frontend", name, description: `Review ${name}.`,
@@ -12,16 +12,16 @@ test("URL-only repository bundles resolve by unique short name across list, exac
   const catalog = await createStashCatalog({ cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }] });
   for (const source of ["frontend-fundamentals", "toss/frontend-fundamentals", "https://github.com/toss/frontend-fundamentals"]) {
     let page = await catalog.resolve({ kind: "list", sources: [source], pageSize: 2 });
-    assert.equal(page.totalRelevant, 4, source);
+    assert.equal(page.total, 4, source);
     const listed = page.matches.map((match) => match.name);
     assert.ok(page.page.nextCursor);
     page = await catalog.resolve({ kind: "list", sources: [source], pageSize: 2, cursor: page.page.nextCursor });
     listed.push(...page.matches.map((match) => match.name));
     assert.deepEqual(listed.sort(), names);
-    for (const kind of ["exact", "search"] as const) {
+    for (const kind of ["exact", "list"] as const) {
       const result = await catalog.resolve(kind === "exact"
         ? { kind, name: "readability", sources: [source] }
-        : { kind, query: "readability", sources: [source] });
+        : { kind, text: "readability", sources: [source] });
       assert.deepEqual(result.matches.map((match) => match.name), ["readability"]);
     }
   }
@@ -36,7 +36,7 @@ test("repository shortcuts preserve punctuation, reject ambiguity, and respect e
   ]);
   const catalog = await createStashCatalog({ cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }] });
   for (const source of ["frontend-fundamentals", "frontendfundamentals", "toss", "fundamentals"]) {
-    const result = await catalog.resolve({ kind: "list", sources: [source], group: "one" });
+    const result = await catalog.resolve({ kind: "list", sources: [source], groups: ["one"] });
     assert.equal(result.status, "no-match", source);
   }
   for (const [source, expected] of [["toss/frontend-fundamentals", "first"], ["other/frontend-fundamentals", "second"], ["taste-skill", "explicit"]]) {
@@ -57,11 +57,20 @@ test("equivalent GitHub URL spellings form one complete repository bundle", asyn
     sidecar: `schemaVersion: 1\nsource:\n  url: ${url}\n`,
   })));
   const catalog = await createStashCatalog({ cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }] });
+  const inventory = await catalog.resolve({ kind: "list", pageSize: 1 });
+  assert.equal(inventory.summary?.sources.length, 1);
+  const summary = inventory.summary!.sources[0]!;
+  assert.equal(summary.count, 4);
+  assert.deepEqual(summary.catalogs, ["test"]);
+  assert.deepEqual(summary.groups, ["frontend"]);
+  assert.ok(urls.includes(summary.url!));
   for (const source of ["frontend-fundamentals", "TOSS/FRONTEND-FUNDAMENTALS"]) {
     const first = await catalog.resolve({ kind: "list", sources: [source], pageSize: 2 });
-    assert.equal(first.totalRelevant, 4);
+    assert.equal(first.total, 4);
     assert.ok(first.page.nextCursor);
     const second = await catalog.resolve({ kind: "list", sources: [source], pageSize: 2, cursor: first.page.nextCursor });
+    assert.deepEqual(first.summary?.sources, [summary]);
+    assert.deepEqual(second.summary?.sources, [summary]);
     const matches = [...first.matches, ...second.matches];
     assert.deepEqual(matches.map((match) => match.name).sort(), ["variant-0", "variant-1", "variant-2", "variant-3"]);
     assert.deepEqual(matches.map((match) => match.source?.url).sort(), [...urls].sort());
@@ -73,6 +82,7 @@ test("equivalent GitHub URL spellings form one complete repository bundle", asyn
   // Explicit URLs remain exact provenance filters rather than shortcut expansion.
   const explicit = await catalog.resolve({ kind: "list", sources: [urls[0]!] });
   assert.deepEqual(explicit.matches.map((match) => match.name), ["variant-0"]);
+  assert.equal(explicit.summary?.sources[0]?.count, 1);
 });
 
 test("repository shorthand excludes other origins and non-repository URL paths", async () => {
@@ -91,4 +101,7 @@ test("repository shorthand excludes other origins and non-repository URL paths",
   const catalog = await createStashCatalog({ cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }] });
   const result = await catalog.resolve({ kind: "list", sources: ["frontend-fundamentals"] });
   assert.equal(result.status, "no-match");
+  const inventory = await catalog.resolve({ kind: "list" });
+  assert.equal(inventory.summary?.sources.length, urls.length);
+  assert.ok(inventory.summary!.sources.every((source) => source.count === 1));
 });

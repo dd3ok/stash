@@ -60,7 +60,7 @@ function run(command, args) {
 
 const before = await fingerprint(generated);
 await run("node", ["scripts/bundle-skill.mjs"]);
-await run("node", ["scripts/build-adapters.mjs"]);
+await run("node", ["--import", "tsx", "scripts/build-adapters.mjs"]);
 const after = await fingerprint(generated);
 
 if (before !== after) {

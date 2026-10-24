@@ -1,51 +1,44 @@
 # Configuration
 
-Read this reference only when Stash reports missing or invalid configuration.
+No config is required for the managed inactive store. Add one only to override
+locations or register existing read-only libraries.
 
-Create the platform user config:
-
-- Windows: `%APPDATA%\stash\config.yaml`
-- macOS: `~/Library/Application Support/stash/config.yaml`
-- Linux: `${XDG_CONFIG_HOME:-~/.config}/stash/config.yaml`
-
-Example:
+| Platform | Config | Managed store |
+|---|---|---|
+| Windows | `%APPDATA%\stash\config.yaml` | `%LOCALAPPDATA%\stash\managed` |
+| macOS | `~/Library/Application Support/stash/config.yaml` | `~/Library/Application Support/stash/managed` |
+| Linux | `$XDG_CONFIG_HOME/stash/config.yaml` (default `~/.config`) | `$XDG_DATA_HOME/stash/managed` (default `~/.local/share`) |
 
 ```yaml
-version: 1
-managedRoot: "D:/skills/stash-managed"
+version: 2
 catalogs:
-  - id: personal
-    root: "D:/skills/stash"
-    enabled: true
-    trust: reviewed
-    followSymlinks: false
-    compatibility:
-      - codex
-      - claude-code
-      - antigravity
+  - id: user-skills
+    root: /absolute/path/to/existing/skills
+    maxDepth: 1
 defaults:
-  pageSize: 40
-  cacheTtlMs: 30000
-  materialScoreThreshold: 2
-  locale: ko-KR
+  pageSize: 50
 ```
 
-Alternatives:
+Config contains only `version`, `catalogs`, optional `managedRoot` and
+`defaults.pageSize` (1–200). Catalogs accept `id`, `root`, `enabled`,
+`trust`, `followSymlinks`, `maxDepth`, `ignore` and `compatibility`.
+The managed root must not overlap external roots; `managed` is a reserved ID.
+Register narrow skill roots, not whole home directories, backups or plugin caches.
 
-- Set `STASH_CONFIG` to an explicit config file.
-- Set `STASH_HOME` for a single temporary default catalog.
-- Pass `--root <path>` to one CLI call.
+Overrides: `--config` / `STASH_CONFIG`, `--managed-root` /
+`STASH_MANAGED_HOME`, `--cache-dir` / `STASH_CACHE_DIR`.
+`--root` selects a single temporary external catalog without a config.
+`STASH_HOME` supplies one external catalog when no config exists.
 
-Run `stash doctor --json`, then `stash index --json` after configuring a catalog.
+Classification lives only in `<managedRoot>/.stash/catalog.json`, keyed by
+exact ref and inspected SKILL.md hash. Use `classify` to change category/purpose;
+it works for external refs without modifying those libraries. Source attribution
+is separate from update provenance; only verified attribution may be recorded.
 
-No configuration file is required when only the managed inactive store is
-used. Its default locations are:
+Cache contains one disposable aggregate snapshot. Missing/invalid cache or
+changed registrations rebuild it; lifecycle writes invalidate it. Outside edits
+require `refresh`. `read --expected-hash` still checks current content.
 
-- Windows: `%LOCALAPPDATA%\stash\managed`
-- macOS: `~/Library/Application Support/stash/managed`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/stash/managed`
-
-Override it with `managedRoot`, `STASH_MANAGED_HOME`, or `--managed-root`.
-The managed store is automatically included as catalog id `managed` after it
-exists. The router never edits any external configured catalog. Cache data is
-stored in the platform cache directory or `STASH_CACHE_DIR`.
+After configuration changes, run `refresh --json`. Use `doctor --json` to
+diagnose malformed entries, stale classifications or coverage gaps. Unknown
+categories/authors are visible gaps, not installation failures.

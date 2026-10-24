@@ -43,18 +43,6 @@ export const fixtureSkills: FixtureSkill[] = [
     description:
       "Create a coherent brand identity with logo, color, typography, and usage rules.",
     sidecar: `schemaVersion: 1
-aliases:
-  - brand kit
-  - 브랜드킷
-  - 브랜드 디자인
-tags:
-  - branding
-  - identity
-intents:
-  - create-brand-system
-examples:
-  positive:
-    - 브랜드 디자인 시스템을 만들어줘
 compatibility:
   codex: supported
   claude-code: supported
@@ -73,16 +61,6 @@ risk:
     description:
       "Create reference-inspired visual brand worlds and art direction.",
     sidecar: `schemaVersion: 1
-aliases:
-  - 브랜드 디자인 세계관
-tags:
-  - branding
-  - art-direction
-intents:
-  - create-brand-world
-examples:
-  positive:
-    - 브랜드 디자인 레퍼런스와 세계관을 만들어줘
 trust:
   state: reviewed
 `,
@@ -93,11 +71,6 @@ trust:
     description:
       "Implement reusable frontend UI components and design tokens.",
     sidecar: `schemaVersion: 1
-tags:
-  - components
-  - tokens
-intents:
-  - implement-ui-library
 trust:
   state: reviewed
 `,
@@ -107,9 +80,6 @@ trust:
     name: "security-audit",
     description: "Audit a codebase for security flaws and unsafe configuration.",
     sidecar: `schemaVersion: 1
-tags:
-  - security
-  - audit
 trust:
   state: reviewed
 `,

@@ -3,20 +3,27 @@
 [English](README.md) | 한국어
 
 Stash는 가끔 쓰는 [`SKILL.md`](https://agentskills.io) 패키지를 호스트의
-일반 검색 경로 밖에 둡니다. `$stash`를 명시적으로 호출하면 정확한 스킬을
-열고, 작업 내용으로 로컬 보관함을 검색하거나, 독립 스킬의 비활성 사본을
-관리할 수 있습니다.
+일반 검색 경로 밖에 둡니다. `$stash`를 명시적으로 호출해 목록을 보고,
+직접 고른 스킬을 불러오거나, 독립 스킬의 비활성 사본을 관리합니다.
 
 ```text
-$stash design-system
-→ 정확한 이름의 저장 스킬 불러오기
+$stash
+→ 카테고리 목록. 출처 목록은 요청할 때 표시
 
-$stash API 문서 검토에 필요한 스킬을 모두 찾아줘
-→ 실질적으로 관련된 저장 스킬 전체 반환
+$stash frontend 목록
+→ 번호·이름·짧은 용도·출처가 있는 목록 한 페이지
+
+2번 불러줘
+→ 선택한 본문만 읽기. 작업 시작·활성 상태 변경 없음
+
+$stash design-system으로 버튼 만들어줘
+→ 지정한 스킬을 읽고 요청한 작업 수행
 ```
 
-검색은 로컬·읽기 전용입니다. 검색만으로 다운로드·설치·업데이트·실행하지
-않습니다.
+현재 대화의 LLM이 요청을 이해하고 짧은 설명으로 적합성을 판단합니다.
+별도 모델 호출은 없습니다. 사용자에게 보여주는 후보는 10개씩, 내부 목록
+조회는 기본 50개씩입니다. 더 보기나 전체 목록을 요청할 수 있으며,
+목록·검색만으로 설치·활성화·실행하지 않습니다.
 
 ## 언제 사용하나요?
 
@@ -31,12 +38,13 @@ $stash API 문서 검토에 필요한 스킬을 모두 찾아줘
      └── 명시 요청 → 로컬 보관함 → 선택한 SKILL.md
 ```
 
-정확한 이름은 결정적인 경로로 먼저 찾고, 작업 검색은 로컬 어휘 검색을
-사용합니다. 페이지 크기가 전체 관련 결과를 자르지 않습니다.
+이름과 ref는 정확히 조회합니다. 주제 탐색은 카테고리·출처 목록과 선택적인
+문자열 필터를 사용하며, 검색 점수·동의어 사전은 없습니다.
 
 ## 빠른 시작
 
-Node.js 20 이상이 필요합니다.
+Node.js 20 이상이 필요하며, 빌드·테스트 정리에는
+[운영체제별 휴지통 도구](docs/installation.md#requirements)가 필요합니다.
 
 ```bash
 npm ci
@@ -49,10 +57,11 @@ node skills/stash/scripts/stash.mjs help
 ```bash
 node skills/stash/scripts/stash.mjs doctor --config examples/config.yaml
 node skills/stash/scripts/stash.mjs exact design-system --config examples/config.yaml --json
-node skills/stash/scripts/stash.mjs search "frontend component tokens" --config examples/config.yaml --json
+node skills/stash/scripts/stash.mjs list --group frontend --config examples/config.yaml --json
 ```
 
-직접 보관함을 추가하려면 [설정](skills/stash/references/CONFIGURATION.md)과
+비활성 스킬은 아래 관리형 보관소에 설치합니다. 이미 있는 외부 폴더를
+검색에만 연결할 때 [설정](skills/stash/references/CONFIGURATION.md)과
 [보관함 형식](docs/catalog-format.md)을 참고하세요.
 
 ## 관리형 비활성 스킬
@@ -108,7 +117,7 @@ Antigravity 생성 어댑터는 지원을 선언하기 전에 대상 `agy` 버�
 - [설정](skills/stash/references/CONFIGURATION.md)
 - [아키텍처](docs/architecture.md)
 - [보관함 형식](docs/catalog-format.md)
-- [검색 방식](docs/routing.md)
+- [조회와 선택](docs/retrieval.md)
 - [호스트 지원](docs/vendor-support.md)
 - [보안](SECURITY.md)
 - [유지보수](docs/maintenance.md)

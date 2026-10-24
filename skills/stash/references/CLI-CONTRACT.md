@@ -1,49 +1,51 @@
 # CLI contract
 
-Read this reference before a lifecycle mutation or when interpreting CLI JSON,
-pagination, or a failure.
+## Retrieval
 
-## Resolve and read
+`exact` resolves an actual name or catalog ref. Name collisions are
+`ambiguous-exact`; never choose the first automatically.
+`list` returns deterministic cards, not ranked recommendations.
+`--text` is a literal substring; category filters are exact, case-insensitive
+IDs. Multiple categories or sources are OR filters; different dimensions are AND.
 
-### Resolve statuses
+`--source` matches an ID, display name or URL; a unique GitHub repository or
+owner/repository shortcut is also accepted. Ambiguous shortcuts do not broaden
+the scope. Repository identity ignores GitHub case and terminal .git, but
+explicit URLs preserve exact provenance matching.
 
-| Status | Meaning | Action |
-|---|---|---|
-| `ok` | Relevant results exist | Continue |
-| `no-match` | Nothing passed the relevance gate | Retry once with better terms or report none |
-| `ambiguous-exact` | One exact name exists in multiple locations | Add a supplied filter or ask |
-| `catalog-unavailable` | A catalog is missing or disabled | Report the configuration problem |
-| `invalid-request` | Input is empty or invalid | Correct the call |
-| `cursor-stale` | The query or index changed between pages | Restart from page one |
+Result schema 2: `total` is the complete filtered count; `matches` holds this
+page, `page.nextCursor` continues it. Pagination is not a total-result limit.
+List defaults to compact cards (50/page, descriptions up to 240 characters).
+`--view full` includes hashes, compatibility and complete category/source counts.
+`--view summary` omits members/cursor. `exact` includes the full description.
+No relevance tiers, score thresholds or query expansion exist.
 
-`totalRelevant` is the full relevant count. `page.size` is the current page and
-`page.nextCursor` continues the same request. Resolve records are in
-`matches[]`; after an unambiguous exact lookup use `matches[0].ref`.
+Statuses: `ok`, `no-match`, `ambiguous-exact`, `catalog-unavailable`,
+`invalid-request`, `cursor-stale`. No-match means no literal/filter match,
+not absence of a semantically suitable skill. A cursor is bound to its filters
+and snapshot contents. `diagnostics.snapshotAt` reports when the view was built;
+it is not a guarantee that outside files have not changed since then.
 
-Relevant tiers are `exact`, `strong`, and `material`. `possible` is weak
-diagnostic evidence and is excluded by default. Preserve source attribution
-from `source.id`, `source.displayName`, `source.url`, `source.revision`, and
-`source.license`. `--source <id|name|url>` first matches explicit provenance.
-When none matches, a unique GitHub repository URL also supports its repository
-name or `owner/repository`. Ambiguous shortcuts return `no-match`; retry with
-the full recorded URL. Punctuation remains significant.
-Shortcut identity folds GitHub owner/repository case, terminal `.git`, and a
-trailing slash. Equivalent spellings retain their original provenance URLs and
-are returned together. Explicit URL filters retain exact matching.
+## Read and freshness
 
-### Read statuses
+`read --expected-hash` checks the current file, not cached content.
+Read statuses: `ok`, `not-found`, `hash-mismatch`,
+`resource-outside-skill`, `quarantined`, `unsupported-resource`.
+Traversal, escaping links, oversized text and binary content are rejected.
+A verified `--format path` does not authorize execution.
 
-| Status | Meaning |
-|---|---|
-| `ok` | Verified content or a local path is available |
-| `not-found` | The ref or resource does not exist |
-| `hash-mismatch` | Content changed after resolution |
-| `resource-outside-skill` | The resource escaped its skill or catalog root |
-| `quarantined` | Catalog policy blocks access |
-| `unsupported-resource` | The requested representation is unsafe or unsupported |
+`refresh` rebuilds the aggregate snapshot. Use it after outside edits or a hash
+mismatch, not before every list. `doctor` is an on-demand, read-only scan.
 
-Use `--expected-hash` when the selected content must not change between resolve
-and read.
+## Classify
+
+`classify <ref> --expected-hash <hash> --group <slug> --purpose "<one line>"`
+records local metadata through StashLifecycle. Purpose is 1–240 characters.
+Category uses lowercase words separated by hyphens or slashes.
+The ref must exist and the current file hash must match. Classification never
+changes skill files, trust, source revisions, ownership or activation.
+A changed SKILL.md invalidates its classification until reviewed.
+Attribution cannot overwrite provenance already recorded in the source.
 
 ## Lifecycle contract
 
@@ -69,11 +71,14 @@ write authority. Use `node <stash-cli> help` for the exact syntax.
   after a successful lifecycle result.
 - Stop on lock, journal, ownership, containment, link, or hash errors. Do not
   delete or edit lifecycle metadata to bypass a failure.
+- Discarded skill trees go to the operating system's Recycle Bin or Trash.
+  Recycling failures preserve the remaining path and are reported through the
+  existing error or cleanup warning. There is no permanent-delete fallback.
 
 ### Install
 
-`install`/`import`/`add` copy a verified local snapshot into the inactive
-managed store and preserve the source. When importing staged repository
+`install` copies a verified local snapshot into the inactive
+managed store and preserves the source. When importing staged repository
 content, pass the complete remote identity. If a safe tracking ref is unknown,
 install without remote provenance and report that bulk update cannot infer it.
 
@@ -133,7 +138,9 @@ removed explicitly with `deactivate`, including a deployment already reported
 missing. If the managed directory is already missing, a valid zero-deployment
 record is removed with a warning. Hash drift, links, files, special paths, and
 invalid metadata fail closed and are preserved for diagnosis. There is no
-`--force`, automatic deactivation, trash store, or restore command.
+`--force`, automatic deactivation, Stash-specific trash store, or restore
+command. The operating system owns recycling; restoring files does not
+automatically restore Stash ownership or deployment records.
 
 ### Status
 

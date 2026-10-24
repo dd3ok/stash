@@ -1,4 +1,4 @@
-import { rm } from "node:fs/promises";
+import { recyclePath } from "../src/internal/recycle-bin.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,5 +22,5 @@ for (const target of targets) {
   ) {
     throw new Error(`Refusing to remove unsafe path: ${target}`);
   }
-  await rm(target, { recursive: true, force: true });
+  await recyclePath(target);
 }

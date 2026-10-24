@@ -23,9 +23,6 @@ async function fixtureCatalog(now?: () => number) {
     ],
     defaults: {
       pageSize: 40,
-      cacheTtlMs: 0,
-      materialScoreThreshold: 2,
-      locale: "ko-KR",
     },
     ...(now ? { now } : {}),
   });
@@ -39,9 +36,8 @@ test("exact lookup is deterministic and read returns the selected skill", async 
     name: "visual-identity",
   });
   assert.equal(resolved.status, "ok");
-  assert.equal(resolved.totalRelevant, 1);
+  assert.equal(resolved.total, 1);
   assert.equal(resolved.matches[0]?.ref, "fixture:web-design/visual-identity");
-  assert.equal(resolved.matches[0]?.relevance?.tier, "exact");
 
   const read = await catalog.read({
     ref: "fixture:web-design/visual-identity",
@@ -51,365 +47,43 @@ test("exact lookup is deterministic and read returns the selected skill", async 
   assert.match(read.content ?? "", /Build the requested brand system/u);
 });
 
-test("Korean discovery returns every relevant brand skill without a fixed cap", async () => {
-  const { catalog } = await fixtureCatalog();
-  const result = await catalog.resolve({
-    kind: "search",
-    query: "브랜드 디자인 스킬들 알려줘",
-    pageSize: 200,
-  });
-  assert.equal(result.status, "ok");
-  assert.deepEqual(
-    result.matches.map((match) => match.name).sort(),
-    ["brand-worlds", "visual-identity"],
-  );
-  assert.equal(result.totalRelevant, 2);
-  assert.equal(result.page.nextCursor, undefined);
-});
-
-test("multi-field evidence remains relevant in a small catalog with lower IDF", async () => {
-  const fixture = await createCatalogFixture(fixtureSkills.slice(0, 3));
+test("selection preserves exclusion clauses while inventory stays compact", async () => {
+  const description = `${"Review a product interface and report actionable findings. ".repeat(6)}Never use for backend-only work.`;
+  const fixture = await createCatalogFixture([{
+    group: "frontend", name: "interface-audit", description,
+  }]);
   const catalog = await createStashCatalog({
-    cacheDir: fixture.cacheDir,
-    catalogs: [{ id: "small", root: fixture.root }],
-    defaults: { materialScoreThreshold: 2 },
+    cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }],
   });
-  const result = await catalog.resolve({
-    kind: "search",
-    query: "브랜드 디자인 스킬들 알려줘",
-  });
-  assert.equal(result.status, "ok");
-  assert.deepEqual(
-    result.matches.map((match) => match.name).sort(),
-    ["brand-worlds", "visual-identity"],
-  );
+  for (const request of [
+    { kind: "exact", name: "interface-audit" } as const,
+  ]) {
+    const result = await catalog.resolve(request);
+    assert.equal(result.matches[0]?.description, description);
+  }
+  const inventory = await catalog.resolve({ kind: "list" });
+  assert.ok(inventory.matches[0]!.description.length <= 240);
 });
 
-test("a broad generic term does not promote description-only matches", async () => {
-  const { catalog } = await fixtureCatalog();
-  const result = await catalog.resolve({
-    kind: "search",
-    query: "design",
-    includePossible: true,
-  });
-  assert.equal(result.status, "ok");
-  const relevant = result.matches.filter(
-    (match) => match.relevance?.tier !== "possible",
-  );
-  assert.deepEqual(relevant.map((match) => match.name), ["design-system"]);
-  assert.ok(result.totalPossible >= 1);
-});
-
-test("dense multi-term description evidence supports standard skills without sidecars", async () => {
+test("one-page inventory summarizes every matching source and category", async () => {
   const fixture = await createCatalogFixture([
-    {
-      group: "design",
-      name: "dense-brand",
-      description:
-        "Create a brand identity with logo systems, art direction, and branding guidance.",
-    },
-    {
-      group: "design",
-      name: "generic-art",
-      description: "Provide general art direction for visual projects.",
-    },
-    {
-      group: "other",
-      name: "unrelated",
-      description: "Analyze database query performance.",
-    },
+    { group: "frontend", name: "one", description: "First fixture.", sidecar: "schemaVersion: 1\nsource:\n  url: https://github.com/example/design\n" },
+    { group: "frontend", name: "two", description: "Second fixture.", sidecar: "schemaVersion: 1\nsource:\n  url: https://github.com/example/design\n" },
+    { group: "media", name: "three", description: "Third fixture." },
   ]);
   const catalog = await createStashCatalog({
-    cacheDir: fixture.cacheDir,
-    catalogs: [{ id: "standard", root: fixture.root }],
+    cacheDir: fixture.cacheDir, catalogs: [{ id: "test", root: fixture.root }],
   });
-  const result = await catalog.resolve({
-    kind: "search",
-    query: "brand branding identity logo art direction",
-  });
-  assert.deepEqual(result.matches.map((match) => match.name), ["dense-brand"]);
-});
-
-test("pagination preserves the complete relevant count", async () => {
-  const { catalog } = await fixtureCatalog();
-  const first = await catalog.resolve({
-    kind: "search",
-    query: "브랜드 디자인",
-    pageSize: 1,
-  });
-  assert.equal(first.totalRelevant, 2);
-  assert.equal(first.matches.length, 1);
-  assert.ok(first.page.nextCursor);
-
-  const second = await catalog.resolve({
-    kind: "search",
-    query: "브랜드 디자인",
-    pageSize: 1,
-    cursor: first.page.nextCursor,
-  });
-  assert.equal(second.totalRelevant, 2);
-  assert.equal(second.matches.length, 1);
-  assert.equal(second.page.nextCursor, undefined);
-  assert.notEqual(first.matches[0]?.ref, second.matches[0]?.ref);
-});
-
-test("cursor is bound to the query and index", async () => {
-  const { catalog } = await fixtureCatalog();
-  const first = await catalog.resolve({
-    kind: "list",
-    pageSize: 1,
-  });
-  assert.ok(first.page.nextCursor);
-  const stale = await catalog.resolve({
-    kind: "search",
-    query: "security",
-    cursor: first.page.nextCursor,
-  });
-  assert.equal(stale.status, "cursor-stale");
-
-  const payload = decodeCursor<Record<string, unknown>>(
-    first.page.nextCursor ?? "",
-  );
-  assert.ok(payload);
-  const previousProfileCursor = encodeCursor({
-    ...payload,
-    routingProfileVersion: 1,
-  });
-  const staleProfile = await catalog.resolve({
-    kind: "list",
-    pageSize: 1,
-    cursor: previousProfileCursor,
-  });
-  assert.equal(staleProfile.status, "cursor-stale");
-});
-
-test("source provenance supports combined filters across every resolve mode", async () => {
-  const fixture = await createCatalogFixture([
-    {
-      group: "game-development",
-      name: "design-game-encounters",
-      description: "Design enemy waves, arenas, objectives, and boss phases.",
-      sidecar: `schemaVersion: 1
-trust:
-  state: reviewed
-source:
-  id: mengto
-  displayName: MengTo/Skills
-  url: https://github.com/MengTo/Skills
-  revision: 46abf7860d716c33de8217b6ff9f75debf28afaf
-  license: MIT
-`,
-    },
-    {
-      group: "web-design",
-      name: "create-brand-world",
-      description: "Create a visual brand world and art direction.",
-      sidecar: `schemaVersion: 1
-trust:
-  state: reviewed
-source:
-  id: mengto
-  displayName: MengTo/Skills
-  url: https://github.com/MengTo/Skills
-`,
-    },
-    {
-      group: "experimental-game",
-      name: "design-game-encounters",
-      description: "Prototype alternate encounter generators.",
-      sidecar: `schemaVersion: 1
-trust:
-  state: reviewed
-source:
-  id: another-author
-  displayName: Another Author
-  url: https://example.com/another-author
-`,
-    },
-  ]);
-  const decoy = await createCatalogFixture([
-    {
-      group: "game-development",
-      name: "design-game-encounters",
-      description: "A duplicate that must be excluded by catalog filtering.",
-      sidecar: `schemaVersion: 1
-source:
-  id: mengto
-  displayName: MengTo/Skills
-  url: https://github.com/MengTo/Skills
-`,
-    },
-  ]);
-  const catalog = await createStashCatalog({
-    cacheDir: fixture.cacheDir,
-    catalogs: [
-      { id: "personal", root: fixture.root },
-      { id: "decoy", root: decoy.root },
-    ],
-    defaults: { pageSize: 1 },
-  });
-
-  const listed = await catalog.resolve({
-    kind: "list",
-    catalogIds: ["personal"],
-    sources: ["MengTo/Skills"],
-    group: "game-development",
-  });
-  assert.equal(listed.status, "ok");
-  assert.equal(listed.totalRelevant, 1);
-  assert.equal(listed.matches[0]?.name, "design-game-encounters");
-  assert.deepEqual(listed.matches[0]?.source, {
-    id: "mengto",
-    displayName: "MengTo/Skills",
-    url: "https://github.com/MengTo/Skills",
-    revision: "46abf7860d716c33de8217b6ff9f75debf28afaf",
-    license: "MIT",
-  });
-
-  const exact = await catalog.resolve({
-    kind: "exact",
-    name: "design-game-encounters",
-    catalogIds: ["personal"],
-    sources: ["https://github.com/MengTo/Skills"],
-    group: "game-development",
-  });
-  assert.equal(exact.status, "ok");
-  assert.equal(exact.matches[0]?.source?.id, "mengto");
-
-  const searched = await catalog.resolve({
-    kind: "search",
-    query: "design-game-encounters",
-    catalogIds: ["personal"],
-    sources: ["mengto"],
-    group: "game-development",
-  });
-  assert.equal(searched.status, "ok");
-  assert.deepEqual(
-    searched.matches.map((match) => match.name),
-    ["design-game-encounters"],
-  );
-  assert.equal(searched.matches[0]?.source?.displayName, "MengTo/Skills");
-
-  const genericSourceWord = await catalog.resolve({
-    kind: "search",
-    query: "skills",
-  });
-  assert.equal(genericSourceWord.status, "no-match");
-
-  const firstPage = await catalog.resolve({
-    kind: "list",
-    pageSize: 1,
-  });
-  assert.ok(firstPage.page.nextCursor);
-  const stale = await catalog.resolve({
-    kind: "list",
-    sources: ["mengto"],
-    pageSize: 1,
-    cursor: firstPage.page.nextCursor,
-  });
-  assert.equal(stale.status, "cursor-stale");
-
-  const sourceSearch = await catalog.resolve({
-    kind: "search",
-    query: "mengto",
-  });
-  assert.equal(sourceSearch.totalRelevant, 3);
-  assert.ok(
-    sourceSearch.matches.every((match) => match.source?.id === "mengto"),
-  );
-
-  const invalidSource = await catalog.resolve({
-    kind: "list",
-    sources: ["///"],
-  });
-  assert.equal(invalidSource.status, "no-match");
-
-  const collisionFixture = await createCatalogFixture([
-    {
-      group: "collision",
-      name: "hyphenated-source",
-      description: "A source identity collision fixture.",
-      sidecar: `schemaVersion: 1
-source:
-  id: foo-bar
-`,
-    },
-    {
-      group: "collision",
-      name: "plain-source",
-      description: "A source identity collision fixture.",
-      sidecar: `schemaVersion: 1
-source:
-  id: foobar
-`,
-    },
-  ]);
-  const collisionCatalog = await createStashCatalog({
-    cacheDir: collisionFixture.cacheDir,
-    catalogs: [{ id: "collision", root: collisionFixture.root }],
-  });
-  const collisionResult = await collisionCatalog.resolve({
-    kind: "list",
-    sources: ["foo-bar"],
-  });
-  assert.deepEqual(
-    collisionResult.matches.map((match) => match.name),
-    ["hyphenated-source"],
-  );
-});
-
-test("legacy indexes are ignored and rebuilt with the current schema", async () => {
-  const fixture = await createCatalogFixture([
-    {
-      group: "portable",
-      name: "current-skill",
-      description: "A current skill with a source-aware record.",
-    },
-  ]);
-  const catalogCache = path.join(fixture.cacheDir, "personal");
-  await mkdir(catalogCache, { recursive: true });
-  await writeFile(
-    path.join(catalogCache, "index-v1.json"),
-    `${JSON.stringify({
-      schemaVersion: 1,
-      catalogId: "personal",
-      root: fixture.root,
-      generatedAt: new Date(Date.now() + 60_000).toISOString(),
-      fingerprint: "legacy",
-      records: [{ name: "legacy-without-source" }],
-      warnings: [],
-    })}\n`,
-    "utf8",
-  );
-  const catalog = await createStashCatalog({
-    cacheDir: fixture.cacheDir,
-    catalogs: [{ id: "personal", root: fixture.root }],
-    defaults: { cacheTtlMs: 600_000 },
-  });
-  const result = await catalog.resolve({
-    kind: "exact",
-    name: "current-skill",
-  });
-  assert.equal(result.status, "ok");
-  const currentIndex = JSON.parse(
-    await readFile(
-      path.join(catalogCache, `index-v${INDEX_SCHEMA_VERSION}.json`),
-      "utf8",
-    ),
-  ) as { schemaVersion: number; records: Array<{ source?: unknown }> };
-  assert.equal(currentIndex.schemaVersion, INDEX_SCHEMA_VERSION);
-  assert.ok(currentIndex.records.every((record) => record.source !== undefined));
-});
-
-test("no-skill query abstains", async () => {
-  const { catalog } = await fixtureCatalog();
-  const result = await catalog.resolve({
-    kind: "search",
-    query: "quantum chemistry spectroscopy",
-  });
-  assert.equal(result.status, "no-match");
-  assert.equal(result.totalRelevant, 0);
-  assert.deepEqual(result.matches, []);
+  const result = await catalog.resolve({ kind: "list", pageSize: 1 });
+  assert.equal(result.matches.length, 1);
+  assert.equal(result.total, 3);
+  assert.ok(result.page.nextCursor);
+  assert.deepEqual(result.summary?.groups, [{ name: "frontend", count: 2 }, { name: "media", count: 1 }]);
+  assert.equal(result.summary?.sources.find((source) => source.label === "example/design")?.count, 2);
+  const scoped = await catalog.resolve({ kind: "list", sources: ["example/design"], pageSize: 1 });
+  assert.equal(scoped.total, 2);
+  assert.equal(scoped.summary?.sources.length, 1);
+  assert.deepEqual(scoped.summary?.groups, [{ name: "frontend", count: 2 }]);
 });
 
 test("quarantined skills are not resolved or read", async () => {
@@ -479,28 +153,6 @@ test("refresh detects new catalog content without mutating source skills", async
   assert.equal(after.status, "ok");
 });
 
-test("sidecar changes invalidate the index fingerprint", async () => {
-  const fixedNow = Date.now();
-  const { catalog, root } = await fixtureCatalog(() => fixedNow);
-  await catalog.resolve({ kind: "exact", name: "visual-identity" });
-  await writeFile(
-    path.join(root, "web-design", "visual-identity", "stash.meta.yaml"),
-    `schemaVersion: 1
-aliases:
-  - completely-new-alias
-trust:
-  state: reviewed
-`,
-    "utf8",
-  );
-  const result = await catalog.resolve({
-    kind: "exact",
-    name: "completely-new-alias",
-  });
-  assert.equal(result.status, "ok");
-  assert.equal(result.matches[0]?.name, "visual-identity");
-});
-
 test("catalog manifest defaults apply when config does not override them", async () => {
   const fixture = await createCatalogFixture([
     {
@@ -539,7 +191,7 @@ defaults:
   assert.equal(result.matches[0]?.compatibility.antigravity, "supported");
 });
 
-test("concurrent refreshes serialize cache replacement", async () => {
+test("concurrent refreshes publish complete snapshots", async () => {
   const { catalog } = await fixtureCatalog();
   const results = await Promise.all([
     catalog.refresh(),

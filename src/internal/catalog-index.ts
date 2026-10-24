@@ -1,13 +1,8 @@
 import {
-  mkdir,
-  open,
   readFile,
   readdir,
   realpath,
-  rename,
   stat,
-  unlink,
-  writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 import { parse } from "yaml";
@@ -25,7 +20,7 @@ import {
 } from "../types.js";
 import {
   isPathInside,
-  safeCatalogSegment,
+  pathIdentity,
   sha256,
 } from "./util.js";
 
@@ -33,7 +28,17 @@ const DEFAULT_IGNORE = new Set([".git", "node_modules", "dist"]);
 const MAX_SKILL_BYTES = 1_048_576;
 const MAX_SIDECAR_BYTES = 262_144;
 const NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-const INDEX_FILE_NAME = `index-v${INDEX_SCHEMA_VERSION}.json`;
+
+function registrationFingerprint(catalog: CatalogRegistration): string {
+  return sha256(JSON.stringify({
+    root: pathIdentity(catalog.root),
+    trust: catalog.trust ?? null,
+    compatibility: catalog.compatibility ? [...catalog.compatibility].sort() : null,
+    followSymlinks: catalog.followSymlinks ?? false,
+    maxDepth: catalog.maxDepth ?? null,
+    ignore: [...(catalog.ignore ?? [])].sort(),
+  }));
+}
 
 interface Candidate {
   skillFile: string;
@@ -50,11 +55,6 @@ interface ScanResult {
 }
 
 interface Sidecar {
-  aliases: string[];
-  tags: string[];
-  intents: string[];
-  positiveExamples: string[];
-  negativeExamples: string[];
   compatibility: VendorCompatibility;
   trust?: TrustState;
   source: {
@@ -144,7 +144,6 @@ function parseSidecar(
   if (input.schemaVersion !== undefined && input.schemaVersion !== 1) {
     throw new Error("stash.meta.yaml must use schemaVersion: 1.");
   }
-  const examples = asObject(input.examples);
   const compatibility = asObject(input.compatibility);
   const defaults = compatibilityDefaults(catalog.compatibility);
   const sourceInfo = asObject(input.source);
@@ -170,11 +169,6 @@ function parseSidecar(
   }
 
   return {
-    aliases: stringArray(input.aliases),
-    tags: stringArray(input.tags),
-    intents: stringArray(input.intents),
-    positiveExamples: stringArray(examples.positive),
-    negativeExamples: stringArray(examples.negative),
     compatibility: {
       codex: compatibilityState(compatibility.codex, defaults.codex),
       "claude-code": compatibilityState(
@@ -437,7 +431,7 @@ async function discoverCandidates(
     root,
     candidates,
     warnings,
-    fingerprint: sha256(`${fingerprintPart}\n${fingerprintSource}`),
+    fingerprint: sha256(`${registrationFingerprint(catalog)}\n${pathIdentity(root)}\n${fingerprintPart}\n${fingerprintSource}`),
     effectiveCatalog,
   };
 }
@@ -499,11 +493,6 @@ async function buildRecord(
       name: metadata.name,
       description: metadata.description.replace(/\s+/gu, " ").trim(),
       relativeSkillFile,
-      aliases: sidecar.aliases,
-      tags: sidecar.tags,
-      intents: sidecar.intents,
-      positiveExamples: sidecar.positiveExamples,
-      negativeExamples: sidecar.negativeExamples,
       compatibility: sidecar.compatibility,
       trust: sidecar.trust ?? catalog.trust ?? "unreviewed",
       source: {
@@ -530,7 +519,24 @@ export async function scanCatalog(
   catalog: CatalogRegistration,
   now: () => number = Date.now,
 ): Promise<ScanResult> {
-  const discovered = await discoverCandidates(catalog);
+  if (catalog.id === "managed") {
+    try { await stat(catalog.root); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return { skipped: 0, index: {
+        schemaVersion: INDEX_SCHEMA_VERSION, catalogId: catalog.id, root: catalog.root,
+        generatedAt: new Date(now()).toISOString(), fingerprint: sha256("empty"), records: [], warnings: [],
+      } };
+    }
+  }
+  return buildIndex(catalog, await discoverCandidates(catalog), now);
+}
+
+async function buildIndex(
+  catalog: CatalogRegistration,
+  discovered: Awaited<ReturnType<typeof discoverCandidates>>,
+  now: () => number,
+): Promise<ScanResult> {
   const warnings = [...discovered.warnings];
   const records: SkillRecord[] = [];
   let skipped = 0;
@@ -562,127 +568,17 @@ export async function scanCatalog(
     seenRefs.add(record.ref);
   }
 
+  const timestamp = new Date(now()).toISOString();
   return {
     index: {
       schemaVersion: INDEX_SCHEMA_VERSION,
       catalogId: catalog.id,
       root: discovered.root,
-      generatedAt: new Date(now()).toISOString(),
+      generatedAt: timestamp,
       fingerprint: discovered.fingerprint,
       records,
       warnings,
     },
     skipped,
   };
-}
-
-export async function loadCatalogIndex(
-  catalog: CatalogRegistration,
-  cacheDir: string,
-  cacheTtlMs: number,
-  now: () => number,
-): Promise<{ index: CatalogIndex; refreshed: boolean }> {
-  const catalogCacheDir = path.join(cacheDir, safeCatalogSegment(catalog.id));
-  const indexPath = path.join(catalogCacheDir, INDEX_FILE_NAME);
-  let cached: CatalogIndex | undefined;
-
-  try {
-    const source = await readFile(indexPath, "utf8");
-    const parsed = JSON.parse(source) as CatalogIndex;
-    if (
-      parsed.schemaVersion === INDEX_SCHEMA_VERSION &&
-      parsed.catalogId === catalog.id &&
-      Array.isArray(parsed.records) &&
-      parsed.records.every(
-        (record) =>
-          record !== null &&
-          typeof record === "object" &&
-          record.source !== null &&
-          typeof record.source === "object",
-      )
-    ) {
-      cached = parsed;
-      const age = now() - Date.parse(parsed.generatedAt);
-      if (
-        cacheTtlMs > 0 &&
-        Number.isFinite(age) &&
-        age >= 0 &&
-        age <= cacheTtlMs
-      ) {
-        return { index: parsed, refreshed: false };
-      }
-    }
-  } catch {
-    cached = undefined;
-  }
-
-  const discovered = await discoverCandidates(catalog);
-  if (cached && cached.fingerprint === discovered.fingerprint) {
-    return { index: cached, refreshed: false };
-  }
-
-  return {
-    index: await writeFreshIndex(catalog, cacheDir, now),
-    refreshed: true,
-  };
-}
-
-export async function writeFreshIndex(
-  catalog: CatalogRegistration,
-  cacheDir: string,
-  now: () => number = Date.now,
-): Promise<CatalogIndex> {
-  const catalogCacheDir = path.join(cacheDir, safeCatalogSegment(catalog.id));
-  await mkdir(catalogCacheDir, { recursive: true });
-  const lockPath = path.join(catalogCacheDir, "index.lock");
-  const lock = await acquireLock(lockPath);
-  try {
-    const { index } = await scanCatalog(catalog, now);
-    const indexPath = path.join(catalogCacheDir, INDEX_FILE_NAME);
-    const temporaryPath = path.join(
-      catalogCacheDir,
-      `index-v${INDEX_SCHEMA_VERSION}.${process.pid}.${Date.now()}.tmp`,
-    );
-    const serialized = `${JSON.stringify(index, null, 2)}\n`;
-    await writeFile(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
-    await rename(temporaryPath, indexPath);
-    return index;
-  } finally {
-    await lock.close();
-    await unlink(lockPath).catch(() => undefined);
-  }
-}
-
-async function acquireLock(lockPath: string) {
-  const timeoutAt = Date.now() + 5_000;
-  for (;;) {
-    try {
-      return await open(lockPath, "wx");
-    } catch (error) {
-      const code =
-        error && typeof error === "object" && "code" in error
-          ? String(error.code)
-          : "";
-      if (code !== "EEXIST") {
-        throw error;
-      }
-      try {
-        const lockInfo = await stat(lockPath);
-        if (Date.now() - lockInfo.mtimeMs > 30_000) {
-          await unlink(lockPath);
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      if (Date.now() >= timeoutAt) {
-        throw new StashError(
-          "index-locked",
-          `Timed out waiting for index lock "${lockPath}".`,
-          4,
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  }
 }

@@ -2,6 +2,7 @@
 
 import { createStashCatalog } from "./stash-catalog.js";
 import { createStashLifecycle } from "./stash-lifecycle.js";
+import { sourceDisplayName } from "./internal/util.js";
 import {
   StashError,
   type CatalogRegistration,
@@ -67,10 +68,10 @@ function numberFlag(args: ParsedArguments, name: string): number | undefined {
     return undefined;
   }
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 200) {
     throw new StashError(
       "invalid-argument",
-      `--${name} must be a number.`,
+      `--${name} must be an integer between 1 and 200.`,
       2,
     );
   }
@@ -161,29 +162,19 @@ function lifecycleTarget(args: ParsedArguments): LifecycleHostTarget {
 }
 
 function printJson(value: unknown): void {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(value)}\n`);
 }
 
 function printResolve(result: ResolveResult): void {
   if (result.status === "no-match") {
-    process.stdout.write(
-      result.totalPossible > 0
-        ? `No materially relevant skills. ${result.totalPossible} possible match(es) were excluded.\n`
-        : "No matching skills.\n",
-    );
+    process.stdout.write("No matching skills.\n");
     return;
   }
   if (result.status !== "ok" && result.status !== "ambiguous-exact") {
     process.stdout.write(`Stash: ${result.status}\n`);
     return;
   }
-  process.stdout.write(
-    `${result.totalRelevant} relevant skill(s)` +
-      (result.totalPossible > 0
-        ? `, ${result.totalPossible} possible match(es)`
-        : "") +
-      "\n",
-  );
+  process.stdout.write(`${result.total} skill(s)\n`);
   let currentScope = "";
   for (const match of result.matches) {
     const group = match.group ?? "(ungrouped)";
@@ -200,13 +191,74 @@ function printResolve(result: ResolveResult): void {
       currentScope = scope;
       process.stdout.write(`\n${scope}\n`);
     }
-    const tier = match.relevance ? ` [${match.relevance.tier}]` : "";
-    process.stdout.write(`- ${match.name}${tier} — ${match.description}\n`);
+    process.stdout.write(`- ${match.name} — ${match.description}\n`);
     process.stdout.write(`  ref: ${match.ref}\n`);
   }
   if (result.page.nextCursor) {
     process.stdout.write(`\nnext_cursor: ${result.page.nextCursor}\n`);
   }
+}
+
+type ListView = "full" | "compact" | "summary";
+
+// Presentation only: all lookup, filtering and pagination stays in StashCatalog.
+function listJson(result: ResolveResult, view: ListView): unknown {
+  if (view === "full") return result;
+  return {
+    schemaVersion: result.schemaVersion,
+    view,
+    status: result.status,
+    mode: result.mode,
+    total: result.total,
+    ...(view === "summary"
+      ? { summary: result.summary }
+      : {
+          page: result.page,
+          matches: result.matches.map((match) => ({
+            name: match.name,
+            ref: match.ref,
+            description: match.description,
+            ...(match.group ? { group: match.group } : {}),
+            source: {
+              label: sourceDisplayName(match.source),
+              ...(match.source?.url ? { url: match.source.url } : {}),
+            },
+          })),
+        }),
+    diagnostics: result.diagnostics,
+  };
+}
+
+function printList(result: ResolveResult, view: ListView): void {
+  if (result.status !== "ok") {
+    printResolve(result);
+    return;
+  }
+  process.stdout.write(`Stash catalog: ${result.total} skill(s)\n`);
+  if (view !== "compact") {
+    const summary = result.summary!;
+    process.stdout.write(`Catalogs: ${summary.catalogs.map((item) => `${item.name} ${item.count}`).join(" | ")}\n`);
+    process.stdout.write(`\nSource packages (${summary.sources.length})\n`);
+    for (const source of summary.sources) {
+      process.stdout.write(`- ${source.label} — ${source.count} [${source.catalogs.join(", ")}]\n`);
+      if (source.url) process.stdout.write(`  ${source.url}\n`);
+    }
+    process.stdout.write(`\nCategories (${summary.groups.length})\n`);
+    for (const group of summary.groups) process.stdout.write(`- ${group.name} — ${group.count}\n`);
+  }
+  if (view === "summary") return;
+  process.stdout.write(`\nSkills on this page (${result.page.size}/${result.total})\n`);
+  let currentScope = "";
+  for (const match of result.matches) {
+    const scope = `${sourceDisplayName(match.source)} / ${match.catalogId} / ${match.group ?? "(ungrouped)"}`;
+    if (scope !== currentScope) {
+      currentScope = scope;
+      process.stdout.write(`\n${scope}\n`);
+    }
+    process.stdout.write(`- ${match.name}${view === "compact" ? ` [${match.ref}] — ${match.description}` : ""}\n`);
+  }
+  if (result.page.nextCursor) process.stdout.write(`\nnext_cursor: ${result.page.nextCursor}\n`);
+  process.stdout.write("\nTip: filter with --source <owner/repo> or --group <category>; use exact/read for full details.\n");
 }
 
 function printLifecycle(result: LifecycleMutationResult): void {
@@ -239,37 +291,36 @@ function printLifecycle(result: LifecycleMutationResult): void {
 }
 
 function usage(): string {
-  return `Stash — on-demand search for local Agent Skills
+  return `Stash — an on-demand skill shelf. The host agent judges relevance.
 
-Usage:
-  stash exact <name> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--json]
-  stash search <query> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
-  stash list [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
-  stash read <ref> [--resource <path>] [--format content|path|json]
-  stash index [--catalog <id>] [--json]
+Read:
+  stash list [--group <category>] [--source <id|owner/repo|url>] [--text <literal>] [--view compact|full|summary] [--page-size <n>] [--cursor <token>] [--json]
+  stash exact <name|ref> [--catalog <id>] [--json]
+  stash read <ref> [--resource <path>] [--expected-hash <sha256:...>] [--format content|path|json]
+  stash refresh [--json]
   stash doctor [--catalog <id>] [--json]
-  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
-  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <revision>] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
-  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+
+Manage:
+  stash install <local-skill-dir> [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash classify <ref> --expected-hash <sha256:...> --group <category> --purpose <one-line purpose> [--json]
+  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <sha>] [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
   stash uninstall <name> [--json]
   stash status [name] [--json]
 
-Configuration:
-  --config <path>       Override STASH_CONFIG/platform config.
-  --root <path>         Use one catalog without a config file.
-  --root-id <id>        Catalog id used with --root (default: default).
-  --cache-dir <path>    Override STASH_CACHE_DIR/platform cache.
-  --managed-root <path> Override STASH_MANAGED_HOME/platform managed store.
+Options:
+  --config <path> --root <path> --root-id <id> --cache-dir <path> --managed-root <path>
+  --catalog and --group may be repeated (OR within each filter).
+  Hosts: codex, claude-code, antigravity-ide, antigravity-cli; user scope only.
 
-Lifecycle targeting:
-  --host <host>         codex, claude-code, antigravity-ide, or antigravity-cli.
-  --scope <scope>       user (default); workspace is rejected in this release.
-
-Result pagination never caps the total relevant result set.
-Lifecycle commands manage only the Stash-owned store and explicitly selected
-standalone skills. They never mutate external catalogs, plugins, or host settings.
+List defaults to compact cards, 50 per page; pagination never caps the total.
+--text is a case-insensitive literal substring, not semantic search.
+Summary gives complete category/source counts without loading skill instructions.
+Refresh after editing registered folders outside Stash; lifecycle writes invalidate the cache.
+Classification changes only Stash metadata, never skill content or activation.
+No network, secondary LLM, relevance scoring or automatic activation.
 `;
 }
 
@@ -289,8 +340,21 @@ async function main(): Promise<void> {
   const catalog = await createStashCatalog(createOptions(args));
   const catalogIds = flags(args, "catalog");
   const sources = flags(args, "source");
-  const group = flag(args, "group");
+  const groups = flags(args, "group");
   const json = booleanFlag(args, "json");
+
+  const common = ["config", "root", "root-id", "cache-dir", "managed-root", "json"];
+  const readFlags: Record<string, string[]> = {
+    exact: ["catalog", "source", "group"],
+    list: ["catalog", "source", "group", "text", "view", "page-size", "cursor"],
+    read: ["resource", "expected-hash", "format"],
+    refresh: [], doctor: ["catalog"],
+    classify: ["expected-hash", "group", "purpose"],
+  };
+  if (readFlags[args.command]) rejectUnknownFlags(args, new Set([...common, ...readFlags[args.command]!]));
+  if (["list", "refresh", "doctor"].includes(args.command) && args.positionals.length) {
+    throw new StashError("invalid-argument", `${args.command} does not accept positional arguments; use explicit filters.`, 2);
+  }
 
   switch (args.command) {
     case "exact": {
@@ -307,49 +371,32 @@ async function main(): Promise<void> {
         name,
         ...(catalogIds ? { catalogIds } : {}),
         ...(sources ? { sources } : {}),
-        ...(group ? { group } : {}),
-      });
-      json ? printJson(result) : printResolve(result);
-      return;
-    }
-    case "search": {
-      const query = args.positionals.join(" ").trim();
-      if (!query) {
-        throw new StashError(
-          "invalid-argument",
-          "search requires a query.",
-          2,
-        );
-      }
-      const cursor = flag(args, "cursor");
-      const pageSize = numberFlag(args, "page-size");
-      const result = await catalog.resolve({
-        kind: "search",
-        query,
-        ...(catalogIds ? { catalogIds } : {}),
-        ...(sources ? { sources } : {}),
-        ...(group ? { group } : {}),
-        ...(cursor ? { cursor } : {}),
-        ...(pageSize !== undefined ? { pageSize } : {}),
-        ...(booleanFlag(args, "include-possible")
-          ? { includePossible: true }
-          : {}),
+        ...(groups ? { groups } : {}),
       });
       json ? printJson(result) : printResolve(result);
       return;
     }
     case "list": {
+      const view = flag(args, "view") ?? "compact";
+      if (view !== "full" && view !== "compact" && view !== "summary") {
+        throw new StashError("invalid-argument", "--view must be full, compact, or summary.", 2);
+      }
       const cursor = flag(args, "cursor");
-      const pageSize = numberFlag(args, "page-size");
+      if (view === "summary" && cursor) {
+        throw new StashError("invalid-argument", "--view summary does not accept --cursor.", 2);
+      }
+      const pageSize = view === "summary" ? 1
+        : numberFlag(args, "page-size") ?? undefined;
       const result = await catalog.resolve({
         kind: "list",
+        ...(flag(args, "text") !== undefined ? { text: flag(args, "text")! } : {}),
         ...(catalogIds ? { catalogIds } : {}),
         ...(sources ? { sources } : {}),
-        ...(group ? { group } : {}),
+        ...(groups ? { groups } : {}),
         ...(cursor ? { cursor } : {}),
         ...(pageSize !== undefined ? { pageSize } : {}),
       });
-      json ? printJson(result) : printResolve(result);
+      json ? printJson(listJson(result, view)) : printList(result, view);
       return;
     }
     case "read": {
@@ -385,10 +432,9 @@ async function main(): Promise<void> {
       }
       return;
     }
-    case "index": {
+    case "refresh": {
       const result = await catalog.refresh({
         ...(catalogIds ? { catalogIds } : {}),
-        force: booleanFlag(args, "force"),
       });
       if (json) {
         printJson(result);
@@ -407,7 +453,6 @@ async function main(): Promise<void> {
     case "doctor": {
       const result = await catalog.doctor({
         ...(catalogIds ? { catalogIds } : {}),
-        verifyHashes: booleanFlag(args, "verify-hashes"),
       });
       if (json) {
         printJson(result);
@@ -420,15 +465,29 @@ async function main(): Promise<void> {
             process.stdout.write(`  - ${warning.code}: ${warning.message}\n`);
           }
         }
+        for (const warning of result.warnings ?? []) {
+          process.stdout.write(`  - ${warning.code}: ${warning.message}\n`);
+        }
+        if (result.coverage) {
+          process.stdout.write(`Coverage: ${result.coverage.total} searchable, ${result.coverage.uncategorized.length} uncategorized, ${result.coverage.unattributed.length} unattributed (refs in --json)\n`);
+        }
       }
       if (result.status === "failed") {
         process.exitCode = 4;
       }
       return;
     }
-    case "install":
-    case "import":
-    case "add": {
+    case "classify": {
+      const ref = args.positionals.join(" ").trim();
+      const contentHash = flag(args, "expected-hash") ?? "";
+      const group = flag(args, "group") ?? "";
+      const purpose = flag(args, "purpose") ?? "";
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const result = await lifecycle.classify({ ref, contentHash, group, purpose });
+      json ? printJson(result) : process.stdout.write(`${ref}: classified\n`);
+      return;
+    }
+    case "install": {
       const source = args.positionals.join(" ").trim();
       if (!source) {
         throw new StashError(

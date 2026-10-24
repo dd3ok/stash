@@ -2,11 +2,11 @@ import {
   cp,
   mkdir,
   readFile,
-  rm,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { recyclePath } from "../src/internal/recycle-bin.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const adapters = path.join(root, "adapters");
@@ -47,7 +47,7 @@ function withInvocation(value, invocation) {
   return value.replaceAll("$stash", invocation);
 }
 
-await rm(adapters, { recursive: true, force: true });
+await recyclePath(adapters);
 await mkdir(adapters, { recursive: true });
 
 const codexRoot = path.join(adapters, "codex");
@@ -61,7 +61,7 @@ await cp(
 const claudeRoot = path.join(adapters, "claude-code");
 const claudeSkill = path.join(claudeRoot, "skills", "stash");
 await copySkill(claudeSkill);
-await rm(path.join(claudeSkill, "agents"), { recursive: true, force: true });
+await recyclePath(path.join(claudeSkill, "agents"));
 await writeFile(
   path.join(claudeSkill, "SKILL.md"),
   `---\nname: stash\ndescription: ${withInvocation(description, "/stash:stash")}\ndisable-model-invocation: true\n---\n${withInvocation(body, "/stash:stash")}`,
@@ -79,10 +79,7 @@ const antigravityRoot = path.join(adapters, "antigravity");
 const ideRoot = path.join(antigravityRoot, "ide");
 const antigravityIdeSkill = path.join(ideRoot, "skills", "stash");
 await copySkill(antigravityIdeSkill);
-await rm(path.join(antigravityIdeSkill, "agents"), {
-  recursive: true,
-  force: true,
-});
+await recyclePath(path.join(antigravityIdeSkill, "agents"));
 await writeFile(
   path.join(antigravityIdeSkill, "SKILL.md"),
   `---\nname: stash\ndescription: ${withInvocation(description, "stash")}\n---\n${withInvocation(body, "stash")}`,
