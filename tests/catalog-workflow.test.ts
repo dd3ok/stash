@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import test from "node:test";
 import { createStashCatalog, createStashLifecycle } from "../src/index.js";
@@ -319,6 +321,39 @@ test("malformed cached sources rebuild for visible records and folded copies", a
       assert.equal(result.status, "ok");
       assert.equal(result.total, 1);
       assert.deepEqual(result.matches[0]!.source, source);
+    });
+  }
+});
+
+test("cache publication retries only bounded Windows rename contention", async t => {
+  for (const [code, failures] of [["EPERM", 2], ["EPERM", Infinity], ["EIO", Infinity]] as const) {
+    await t.test(`${code}: ${failures}`, async context => {
+      const { root, cacheDir, catalog } = await fixture();
+      await catalog.refresh();
+      const file = path.join(cacheDir, "catalog.json");
+      const before = await readFile(file, "utf8");
+      const skill = path.join(root, "frontend", "adapt", "SKILL.md");
+      await writeFile(skill, (await readFile(skill, "utf8")) + "Changed before publication.\n");
+      const originalRename = fs.promises.rename;
+      let attempts = 0;
+      const mocked = context.mock.method(fs.promises, "rename", async (source, destination) => {
+        if (destination === file && ++attempts <= failures) {
+          throw Object.assign(new Error("Injected publication failure."), { code });
+        }
+        return originalRename(source, destination);
+      });
+      syncBuiltinESMExports();
+      context.after(() => { mocked.mock.restore(); syncBuiltinESMExports(); });
+      if (process.platform === "win32" && failures === 2) {
+        assert.equal((await catalog.refresh()).status, "ok");
+        assert.equal(attempts, 3);
+        assert.notEqual(JSON.parse(await readFile(file, "utf8")).fingerprint, JSON.parse(before).fingerprint);
+      } else {
+        await assert.rejects(catalog.refresh(), { code });
+        assert.equal(attempts, process.platform === "win32" && code === "EPERM" ? 5 : 1);
+        assert.equal(await readFile(file, "utf8"), before);
+      }
+      assert.equal((await catalog.resolve({ kind: "list" })).total, 4);
     });
   }
 });

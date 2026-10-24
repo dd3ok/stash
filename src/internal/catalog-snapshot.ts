@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { CatalogIndex, CatalogWarning, SkillRecord, StashConfiguration } from "../types.js";
 import { INDEX_SCHEMA_VERSION, StashError } from "../types.js";
 import { scanCatalog } from "./catalog-index.js";
@@ -94,7 +95,16 @@ export async function loadSnapshot(configuration: StashConfiguration, cacheDir: 
   await mkdir(cacheDir, { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;
   await writeFile(temporary, JSON.stringify(result), { encoding: "utf8", flag: "wx" });
-  try { await rename(temporary, file); }
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temporary, file); break; }
+      catch (error) {
+        // Windows can briefly deny concurrent replacement; never retry indefinitely.
+        if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM" || attempt === 4) throw error;
+        await delay(20 * (attempt + 1));
+      }
+    }
+  }
   catch (error) { await recyclePath(temporary).catch(() => undefined); throw error; }
   return result;
 }

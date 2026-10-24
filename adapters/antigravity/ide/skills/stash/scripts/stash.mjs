@@ -8268,6 +8268,7 @@ async function buildIndex(catalog, discovered, now) {
 import { randomUUID as randomUUID2 } from "node:crypto";
 import { lstat as lstat5, mkdir, readFile as readFile6, rename as rename2, writeFile as writeFile2 } from "node:fs/promises";
 import path8 from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 // src/internal/classification.ts
 import { randomUUID } from "node:crypto";
@@ -9046,7 +9047,15 @@ async function loadSnapshot(configuration, cacheDir, now, force = false) {
   const temporary = `${file}.${randomUUID2()}.tmp`;
   await writeFile2(temporary, JSON.stringify(result), { encoding: "utf8", flag: "wx" });
   try {
-    await rename2(temporary, file);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rename2(temporary, file);
+        break;
+      } catch (error) {
+        if (process.platform !== "win32" || error.code !== "EPERM" || attempt === 4) throw error;
+        await delay(20 * (attempt + 1));
+      }
+    }
   } catch (error) {
     await recyclePath(temporary).catch(() => void 0);
     throw error;
