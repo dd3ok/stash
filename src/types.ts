@@ -1,5 +1,5 @@
 export const RESULT_SCHEMA_VERSION = 2 as const;
-export const INDEX_SCHEMA_VERSION = 3 as const;
+export const INDEX_SCHEMA_VERSION = 4 as const;
 
 export type Vendor = "codex" | "claude-code" | "antigravity";
 export type LifecycleHost =

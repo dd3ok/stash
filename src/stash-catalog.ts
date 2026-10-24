@@ -198,14 +198,18 @@ class StashCatalogImplementation implements StashCatalog {
     let selected: CatalogRegistration[];
     try { selected = this.#selectRegistrations(request.catalogIds); }
     catch (error) { if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable"); throw error; }
-    let snapshot;
-    try { snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now); }
-    catch (error) { if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable"); throw error; }
+    const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now);
     result.diagnostics.snapshotAt = snapshot.generatedAt;
-    const warnings = [...snapshot.warnings, ...snapshot.indexes.flatMap(index => index.warnings)];
+    const exactName = request.kind === "exact" ? literal(request.name) : "";
+    const exactCatalog = exactName.includes(":") ? exactName.split(":")[0] : undefined;
+    const failures = snapshot.failures.filter(failure => selected.some(c => c.id === failure.catalogId) &&
+      (exactCatalog === undefined || failure.catalogId === exactCatalog));
+    const warnings = [...snapshot.warnings, ...snapshot.indexes.flatMap(index => index.warnings),
+      ...failures.map(failure => ({ code: "catalog-unavailable", message: failure.message }))];
     if (warnings.length) result.diagnostics.warnings = warnings;
+    if (failures.length) return finish("catalog-unavailable");
     const available = [...snapshot.indexes.flatMap(index => index.records),
-      ...(request.catalogIds?.length || (request.kind === "exact" && request.name.includes(":")) ? snapshot.copies : [])]
+      ...(request.catalogIds?.length || exactCatalog !== undefined ? snapshot.copies : [])]
       .filter(record => record.trust !== "quarantined");
     const sources = resolveRepositorySelectors(available, (request.sources ?? []).map(normalizeSourceSelector));
     const groups = (request.groups ?? []).map(literal);
@@ -214,7 +218,7 @@ class StashCatalogImplementation implements StashCatalog {
       (!sources.length || matchesSource(record, sources)) &&
       (!groups.length || groups.includes(literal(record.group ?? "(ungrouped)"))));
     if (request.kind === "exact") {
-      const name = literal(request.name);
+      const name = exactName;
       if (!name) return finish("invalid-request");
       records = records.filter(record => literal(record.name) === name || literal(record.ref) === name);
       result.matches = records.map(record => ({ ...toListedSkill(record), description: record.description }));
@@ -412,14 +416,18 @@ class StashCatalogImplementation implements StashCatalog {
 
   async refresh(request: RefreshRequest = {}): Promise<RefreshResult> {
     const selected = this.#selectRegistrations(request.catalogIds);
-    // Rebuild the aggregate snapshot atomically; scoped output never produces a partial cache.
+    // Rebuild the whole snapshot; scope changes only the reported result.
     const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now, true);
+    const failures = snapshot.failures.filter(failure => selected.some(c => c.id === failure.catalogId));
     return {
-      status: "ok",
-      catalogs: snapshot.indexes.filter(index => selected.some(c => c.id === index.catalogId)).map(index => ({
+      status: !failures.length ? "ok" : failures.length === selected.length ? "failed" : "partial",
+      catalogs: [...snapshot.indexes.filter(index => selected.some(c => c.id === index.catalogId)).map(index => ({
         catalogId: index.catalogId, indexed: index.records.length,
         skipped: index.warnings.filter(w => w.code === "invalid-skill").length, warnings: index.warnings,
-      })),
+      })), ...failures.map(failure => ({
+        catalogId: failure.catalogId, indexed: 0, skipped: 0,
+        warnings: [{ code: "catalog-unavailable", message: failure.message }],
+      }))],
     };
   }
 

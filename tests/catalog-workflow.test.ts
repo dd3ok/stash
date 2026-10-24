@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { createStashCatalog, createStashLifecycle } from "../src/index.js";
@@ -85,6 +85,11 @@ test("unchanged refresh preserves cursors; corrupt snapshots rebuild", async () 
   snapshot.version = -1;
   await writeFile(path.join(cacheDir, "catalog.json"), JSON.stringify(snapshot));
   assert.equal((await catalog.resolve({ kind: "list" })).total, 4);
+  const valid = await readFile(path.join(cacheDir, "catalog.json"), "utf8");
+  for (const failures of [undefined, [null], [{ catalogId: 42, message: "invalid" }]]) {
+    await writeFile(path.join(cacheDir, "catalog.json"), JSON.stringify({ ...JSON.parse(valid), failures }));
+    assert.equal((await catalog.resolve({ kind: "list" })).total, 4);
+  }
 });
 
 test("registration changes invalidate snapshot policy and pagination", async () => {
@@ -196,4 +201,124 @@ test("default 50-card pages cover large result sets without dropping records", a
     result = await catalog.resolve({ kind: "list", cursor: result.page.nextCursor });
   }
   assert.equal(seen.size, 123);
+});
+
+test("scoped retrieval isolates missing and non-directory catalogs without hiding incomplete results", async t => {
+  for (const kind of ["missing", "file"] as const) await t.test(kind, async () => {
+    const { options } = await fixture();
+    const unavailable = { id: "offline", root: path.join(path.dirname(options.managedRoot), kind) };
+    if (kind === "file") await writeFile(unavailable.root, "Not a directory.");
+    const configured = { ...options, catalogs: [...options.catalogs, unavailable] };
+    const catalog = await createStashCatalog(configured);
+    const first = await catalog.resolve({ kind: "list", catalogIds: ["test"], pageSize: 1 });
+    assert.equal(first.status, "ok");
+    assert.equal(first.total, 4);
+    const reopened = await createStashCatalog(configured);
+    const next = await reopened.resolve({ kind: "list", catalogIds: ["test"], cursor: first.page.nextCursor });
+    assert.equal(next.status, "ok");
+    assert.equal(next.matches.length, 3);
+    for (const name of ["TEST:frontend/adapt", "ＴＥＳＴ：frontend/adapt"]) {
+      assert.equal((await reopened.resolve({ kind: "exact", name })).status, "ok");
+    }
+    assert.equal((await reopened.read({ ref: "test:frontend/adapt" })).status, "ok");
+    for (const catalogIds of [undefined, ["offline"], ["test", "offline"]]) {
+      const result = await reopened.resolve({ kind: "list", ...(catalogIds ? { catalogIds } : {}) });
+      assert.equal(result.status, "catalog-unavailable");
+      assert.equal(result.matches.length, 0);
+      assert.ok(result.diagnostics.warnings?.some(w => w.code === "catalog-unavailable" && w.message.includes("offline")));
+    }
+    assert.equal((await reopened.resolve({ kind: "exact", name: "adapt" })).status, "catalog-unavailable");
+    assert.equal((await reopened.refresh({ catalogIds: ["test"] })).status, "ok");
+    assert.equal((await reopened.refresh({ catalogIds: ["offline"] })).status, "failed");
+    const refresh = await reopened.refresh();
+    assert.equal(refresh.status, "partial");
+    assert.ok(refresh.catalogs.find(c => c.catalogId === "offline")?.warnings.some(w => w.code === "catalog-unavailable"));
+    const disabled = await createStashCatalog({ ...options, catalogs: [...options.catalogs, { ...unavailable, enabled: false }] });
+    assert.equal((await disabled.resolve({ kind: "list" })).total, 4);
+  });
+});
+
+test("refresh recovers failed catalogs and invalidates cursors", async () => {
+  const { options } = await fixture();
+  const recoveredRoot = path.join(path.dirname(options.managedRoot), "recovering");
+  const catalog = await createStashCatalog({ ...options, catalogs: [...options.catalogs, { id: "recovering", root: recoveredRoot }] });
+  const first = await catalog.resolve({ kind: "list", catalogIds: ["test"], pageSize: 1 });
+  await mkdir(path.join(recoveredRoot, "restored"), { recursive: true });
+  await writeFile(path.join(recoveredRoot, "restored", "SKILL.md"), "---\nname: restored\ndescription: A recovered skill.\n---\n");
+  assert.equal((await catalog.resolve({ kind: "list" })).status, "catalog-unavailable");
+  assert.equal((await catalog.refresh()).status, "ok");
+  assert.equal((await catalog.resolve({ kind: "list" })).total, 5);
+  assert.equal((await catalog.resolve({ kind: "list", catalogIds: ["test"], cursor: first.page.nextCursor })).status, "cursor-stale");
+  await rename(recoveredRoot, `${recoveredRoot}-offline`);
+  assert.equal((await catalog.refresh()).status, "partial");
+  assert.equal((await catalog.resolve({ kind: "list", catalogIds: ["test"] })).total, 4);
+  assert.equal((await catalog.resolve({ kind: "exact", name: "recovering:restored" })).status, "catalog-unavailable");
+});
+
+test("reclassification preserves omitted attribution only for the same inspected hash", async () => {
+  const { root, options, catalog } = await fixture();
+  const exact = (await catalog.resolve({ kind: "exact", name: "adapt" })).matches[0]!;
+  const lifecycle = await createStashLifecycle(options);
+  const request = { ref: exact.ref, contentHash: exact.contentHash, group: "frontend", purpose: "Original purpose." };
+  const source = { id: "verified-author", displayName: "Verified Author", url: "https://github.com/example/skills" };
+  await lifecycle.classify({ ...request, source });
+  await lifecycle.classify({ ...request, group: "web-design", purpose: "Changed purpose." });
+  let selected = (await catalog.resolve({ kind: "list", groups: ["web-design"] })).matches[0]!;
+  assert.deepEqual(selected.source, source);
+  assert.equal(selected.description, "Changed purpose.");
+  const skillPath = path.join(root, "frontend", "adapt", "SKILL.md");
+  await writeFile(skillPath, (await readFile(skillPath, "utf8")) + "Changed content.\n");
+  await assert.rejects(lifecycle.classify(request), { code: "hash-mismatch" });
+  const metadataPath = path.join(options.managedRoot, ".stash", "catalog.json");
+  assert.deepEqual(JSON.parse(await readFile(metadataPath, "utf8")).skills[exact.ref].source, source);
+  await catalog.refresh();
+  selected = (await catalog.resolve({ kind: "exact", name: exact.ref })).matches[0]!;
+  await lifecycle.classify({ ...request, contentHash: selected.contentHash });
+  assert.deepEqual((await catalog.resolve({ kind: "exact", name: exact.ref })).matches[0]!.source, {});
+  assert.equal((await lifecycle.status()).skills.length, 0);
+});
+
+test("explicit attribution replacement or clearing stays explicit and upstream provenance wins", async () => {
+  const { root, options, catalog } = await fixture();
+  const exact = (await catalog.resolve({ kind: "exact", name: "adapt" })).matches[0]!;
+  const lifecycle = await createStashLifecycle(options);
+  const request = { ref: exact.ref, contentHash: exact.contentHash, group: "frontend", purpose: "Fixture." };
+  await lifecycle.classify({ ...request, source: { id: "first-author" } });
+  const replacement = { url: "https://github.com/verified/replacement" };
+  await lifecycle.classify({ ...request, source: replacement });
+  assert.deepEqual((await catalog.resolve({ kind: "exact", name: exact.ref })).matches[0]!.source, replacement);
+  await lifecycle.classify({ ...request, source: {} });
+  await lifecycle.classify(request);
+  assert.deepEqual((await catalog.resolve({ kind: "exact", name: exact.ref })).matches[0]!.source, {});
+  await writeFile(path.join(root, "frontend", "adapt", "stash.meta.yaml"), "schemaVersion: 1\nsource:\n  url: https://github.com/upstream/skills\n");
+  await lifecycle.classify({ ...request, source: replacement });
+  await lifecycle.classify(request);
+  const preserved = await catalog.resolve({ kind: "exact", name: exact.ref });
+  assert.equal(preserved.matches[0]!.source?.url, "https://github.com/upstream/skills");
+  assert.ok(preserved.diagnostics.warnings?.some(w => w.code === "classification-source-conflict"));
+});
+
+test("malformed cached sources rebuild for visible records and folded copies", async t => {
+  const { root, options, cacheDir, catalog } = await fixture();
+  const source = { id: "fixture-source", displayName: "Fixture Source", url: "https://github.com/example/skills" };
+  await writeFile(path.join(root, "frontend", "adapt", "stash.meta.yaml"), `schemaVersion: 1\nsource:\n  id: ${source.id}\n  displayName: ${source.displayName}\n  url: ${source.url}\n`);
+  await (await createStashLifecycle(options)).install({ source: path.join(root, "frontend", "adapt") });
+  await catalog.refresh();
+  const file = path.join(cacheDir, "catalog.json");
+  const original = await readFile(file, "utf8");
+  const invalidSources = [null, [], "source", { id: 42 }, { displayName: [] }, { url: 42 }, { id: null }, { displayName: null }, { url: null }];
+  for (const folded of [false, true]) for (const invalid of invalidSources) {
+    await t.test(`${folded ? "folded" : "visible"}: ${JSON.stringify(invalid)}`, async () => {
+      const snapshot = JSON.parse(original);
+      const records = folded ? snapshot.copies : snapshot.indexes.flatMap((index: { records: unknown[] }) => index.records);
+      const record = records.find((item: { name: string }) => item.name === "adapt");
+      assert.ok(record);
+      record.source = invalid;
+      await writeFile(file, JSON.stringify(snapshot));
+      const result = await catalog.resolve({ kind: "list", sources: [source.id], ...(folded ? { catalogIds: ["test"] } : {}) });
+      assert.equal(result.status, "ok");
+      assert.equal(result.total, 1);
+      assert.deepEqual(result.matches[0]!.source, source);
+    });
+  }
 });

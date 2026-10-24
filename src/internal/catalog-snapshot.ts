@@ -17,6 +17,7 @@ export interface CatalogSnapshot {
   indexes: CatalogIndex[];
   copies: SkillRecord[];
   warnings: CatalogWarning[];
+  failures: Array<{ catalogId: string; message: string }>;
 }
 
 async function revision(root?: string): Promise<string> {
@@ -41,11 +42,15 @@ async function revision(root?: string): Promise<string> {
 }
 
 function validRecord(record: SkillRecord): boolean {
+  const source = record?.source;
   return !!record && typeof record.ref === "string" && typeof record.catalogId === "string" &&
     typeof record.name === "string" && typeof record.description === "string" &&
     (record.group === undefined || typeof record.group === "string") &&
     (record.purpose === undefined || typeof record.purpose === "string") &&
-    typeof record.contentHash === "string" && !!record.source && typeof record.source === "object";
+    typeof record.contentHash === "string" && !!source && typeof source === "object" && !Array.isArray(source) &&
+    (source.id === undefined || typeof source.id === "string") &&
+    (source.displayName === undefined || typeof source.displayName === "string") &&
+    (source.url === undefined || typeof source.url === "string");
 }
 
 /** One disposable snapshot. Only refresh and lifecycle changes trigger a scan. */
@@ -58,12 +63,15 @@ export async function loadSnapshot(configuration: StashConfiguration, cacheDir: 
       const cached = JSON.parse(await readFile(file, "utf8")) as CatalogSnapshot;
       if (cached.version === INDEX_SCHEMA_VERSION && cached.key === key &&
           Array.isArray(cached.indexes) && Array.isArray(cached.copies) && Array.isArray(cached.warnings) && typeof cached.fingerprint === "string" &&
+          Array.isArray(cached.failures) && cached.failures.every(failure => failure && typeof failure.catalogId === "string" && typeof failure.message === "string") &&
           cached.copies.every(validRecord) && cached.indexes.every(index => Array.isArray(index.records) && Array.isArray(index.warnings) && index.records.every(validRecord))) return cached;
     } catch { /* Missing or corrupt derived data is rebuilt. */ }
   }
   const indexes: CatalogIndex[] = [];
+  const failures: CatalogSnapshot["failures"] = [];
   for (const catalog of configuration.catalogs.filter(c => c.enabled !== false)) {
-    indexes.push((await scanCatalog(catalog, now)).index);
+    try { indexes.push((await scanCatalog(catalog, now)).index); }
+    catch (error) { failures.push({ catalogId: catalog.id, message: `Catalog "${catalog.id}" could not be scanned: ${String(error)}` }); }
   }
   const projected = await projectManagedCopies(indexes, configuration.managedRoot);
   const metadata = await readClassifications(configuration.managedRoot);
@@ -76,11 +84,12 @@ export async function loadSnapshot(configuration: StashConfiguration, cacheDir: 
   }
   const result: CatalogSnapshot = {
     version: INDEX_SCHEMA_VERSION, key,
-    fingerprint: sha256(JSON.stringify({ indexes: classified.indexes.map(index => ({ catalogId: index.catalogId, records: index.records, warnings: index.warnings })), copies, warnings: classified.warnings })),
+    fingerprint: sha256(JSON.stringify({ indexes: classified.indexes.map(index => ({ catalogId: index.catalogId, records: index.records, warnings: index.warnings })), copies, warnings: classified.warnings, failures })),
     generatedAt: new Date(now()).toISOString(),
     indexes: classified.indexes,
     copies,
     warnings: classified.warnings,
+    failures,
   };
   await mkdir(cacheDir, { recursive: true });
   const temporary = `${file}.${randomUUID()}.tmp`;

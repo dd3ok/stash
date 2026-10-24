@@ -7369,7 +7369,7 @@ import path9 from "node:path";
 
 // src/types.ts
 var RESULT_SCHEMA_VERSION = 2;
-var INDEX_SCHEMA_VERSION = 3;
+var INDEX_SCHEMA_VERSION = 4;
 var StashError = class extends Error {
   exitCode;
   code;
@@ -9001,7 +9001,8 @@ async function revision(root) {
   }
 }
 function validRecord2(record) {
-  return !!record && typeof record.ref === "string" && typeof record.catalogId === "string" && typeof record.name === "string" && typeof record.description === "string" && (record.group === void 0 || typeof record.group === "string") && (record.purpose === void 0 || typeof record.purpose === "string") && typeof record.contentHash === "string" && !!record.source && typeof record.source === "object";
+  const source = record?.source;
+  return !!record && typeof record.ref === "string" && typeof record.catalogId === "string" && typeof record.name === "string" && typeof record.description === "string" && (record.group === void 0 || typeof record.group === "string") && (record.purpose === void 0 || typeof record.purpose === "string") && typeof record.contentHash === "string" && !!source && typeof source === "object" && !Array.isArray(source) && (source.id === void 0 || typeof source.id === "string") && (source.displayName === void 0 || typeof source.displayName === "string") && (source.url === void 0 || typeof source.url === "string");
 }
 async function loadSnapshot(configuration, cacheDir, now, force = false) {
   const before = await revision(configuration.managedRoot);
@@ -9010,13 +9011,18 @@ async function loadSnapshot(configuration, cacheDir, now, force = false) {
   if (!force) {
     try {
       const cached = JSON.parse(await readFile6(file, "utf8"));
-      if (cached.version === INDEX_SCHEMA_VERSION && cached.key === key && Array.isArray(cached.indexes) && Array.isArray(cached.copies) && Array.isArray(cached.warnings) && typeof cached.fingerprint === "string" && cached.copies.every(validRecord2) && cached.indexes.every((index) => Array.isArray(index.records) && Array.isArray(index.warnings) && index.records.every(validRecord2))) return cached;
+      if (cached.version === INDEX_SCHEMA_VERSION && cached.key === key && Array.isArray(cached.indexes) && Array.isArray(cached.copies) && Array.isArray(cached.warnings) && typeof cached.fingerprint === "string" && Array.isArray(cached.failures) && cached.failures.every((failure) => failure && typeof failure.catalogId === "string" && typeof failure.message === "string") && cached.copies.every(validRecord2) && cached.indexes.every((index) => Array.isArray(index.records) && Array.isArray(index.warnings) && index.records.every(validRecord2))) return cached;
     } catch {
     }
   }
   const indexes = [];
+  const failures = [];
   for (const catalog of configuration.catalogs.filter((c) => c.enabled !== false)) {
-    indexes.push((await scanCatalog(catalog, now)).index);
+    try {
+      indexes.push((await scanCatalog(catalog, now)).index);
+    } catch (error) {
+      failures.push({ catalogId: catalog.id, message: `Catalog "${catalog.id}" could not be scanned: ${String(error)}` });
+    }
   }
   const projected = await projectManagedCopies(indexes, configuration.managedRoot);
   const metadata = await readClassifications(configuration.managedRoot);
@@ -9029,11 +9035,12 @@ async function loadSnapshot(configuration, cacheDir, now, force = false) {
   const result = {
     version: INDEX_SCHEMA_VERSION,
     key,
-    fingerprint: sha256(JSON.stringify({ indexes: classified.indexes.map((index) => ({ catalogId: index.catalogId, records: index.records, warnings: index.warnings })), copies, warnings: classified.warnings })),
+    fingerprint: sha256(JSON.stringify({ indexes: classified.indexes.map((index) => ({ catalogId: index.catalogId, records: index.records, warnings: index.warnings })), copies, warnings: classified.warnings, failures })),
     generatedAt: new Date(now()).toISOString(),
     indexes: classified.indexes,
     copies,
-    warnings: classified.warnings
+    warnings: classified.warnings,
+    failures
   };
   await mkdir(cacheDir, { recursive: true });
   const temporary = `${file}.${randomUUID2()}.tmp`;
@@ -9202,25 +9209,27 @@ var StashCatalogImplementation = class {
       if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable");
       throw error;
     }
-    let snapshot;
-    try {
-      snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now);
-    } catch (error) {
-      if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable");
-      throw error;
-    }
+    const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now);
     result.diagnostics.snapshotAt = snapshot.generatedAt;
-    const warnings = [...snapshot.warnings, ...snapshot.indexes.flatMap((index) => index.warnings)];
+    const exactName = request.kind === "exact" ? literal(request.name) : "";
+    const exactCatalog = exactName.includes(":") ? exactName.split(":")[0] : void 0;
+    const failures = snapshot.failures.filter((failure) => selected.some((c) => c.id === failure.catalogId) && (exactCatalog === void 0 || failure.catalogId === exactCatalog));
+    const warnings = [
+      ...snapshot.warnings,
+      ...snapshot.indexes.flatMap((index) => index.warnings),
+      ...failures.map((failure) => ({ code: "catalog-unavailable", message: failure.message }))
+    ];
     if (warnings.length) result.diagnostics.warnings = warnings;
+    if (failures.length) return finish("catalog-unavailable");
     const available = [
       ...snapshot.indexes.flatMap((index) => index.records),
-      ...request.catalogIds?.length || request.kind === "exact" && request.name.includes(":") ? snapshot.copies : []
+      ...request.catalogIds?.length || exactCatalog !== void 0 ? snapshot.copies : []
     ].filter((record) => record.trust !== "quarantined");
     const sources = resolveRepositorySelectors(available, (request.sources ?? []).map(normalizeSourceSelector));
     const groups = (request.groups ?? []).map(literal);
     let records = available.filter((record) => selected.some((c) => c.id === record.catalogId) && (!sources.length || matchesSource(record, sources)) && (!groups.length || groups.includes(literal(record.group ?? "(ungrouped)"))));
     if (request.kind === "exact") {
-      const name = literal(request.name);
+      const name = exactName;
       if (!name) return finish("invalid-request");
       records = records.filter((record) => literal(record.name) === name || literal(record.ref) === name);
       result.matches = records.map((record) => ({ ...toListedSkill(record), description: record.description }));
@@ -9402,14 +9411,20 @@ var StashCatalogImplementation = class {
   async refresh(request = {}) {
     const selected = this.#selectRegistrations(request.catalogIds);
     const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now, true);
+    const failures = snapshot.failures.filter((failure) => selected.some((c) => c.id === failure.catalogId));
     return {
-      status: "ok",
-      catalogs: snapshot.indexes.filter((index) => selected.some((c) => c.id === index.catalogId)).map((index) => ({
+      status: !failures.length ? "ok" : failures.length === selected.length ? "failed" : "partial",
+      catalogs: [...snapshot.indexes.filter((index) => selected.some((c) => c.id === index.catalogId)).map((index) => ({
         catalogId: index.catalogId,
         indexed: index.records.length,
         skipped: index.warnings.filter((w) => w.code === "invalid-skill").length,
         warnings: index.warnings
-      }))
+      })), ...failures.map((failure) => ({
+        catalogId: failure.catalogId,
+        indexed: 0,
+        skipped: 0,
+        warnings: [{ code: "catalog-unavailable", message: failure.message }]
+      }))]
     };
   }
   async doctor(request = {}) {
@@ -10744,6 +10759,10 @@ var StashLifecycleImplementation = class {
       }
       const data = await readClassifications(this.#managedRoot);
       const { ref, ...classification } = request;
+      const previous = data.skills[ref];
+      if (classification.source === void 0 && previous?.contentHash === classification.contentHash && previous.source !== void 0) {
+        classification.source = previous.source;
+      }
       data.skills[ref] = classification;
       await writeClassifications(this.#managedRoot, data);
       return { status: "classified", ref };

@@ -1672,6 +1672,10 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       const data = await readClassifications(this.#managedRoot);
       const { ref, ...classification } = request;
+      const previous = data.skills[ref];
+      if (classification.source === undefined && previous?.contentHash === classification.contentHash && previous.source !== undefined) {
+        classification.source = previous.source;
+      }
       data.skills[ref] = classification;
       await writeClassifications(this.#managedRoot, data);
       return { status: "classified", ref };

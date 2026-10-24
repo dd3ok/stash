@@ -55,6 +55,10 @@ invalidate it; reads refuse an active lifecycle lock. Builders compare revision
 before/after scanning and atomically publish only a consistent snapshot.
 Concurrent readers can duplicate a rebuild; no daemon or extra locking service
 is needed. Cursors bind filters and snapshot content, not refresh timestamps.
+The same snapshot records per-catalog scan failures. A scoped lookup or exact
+ref can use healthy catalogs; requests needing an unavailable catalog report
+`catalog-unavailable`, never a misleading complete count. `refresh` reports
+`partial`/`failed` for its selected roots and retries recovered folders.
 
 Outside edits require explicit `refresh`; there is no TTL polling.
 Safe reads rescan the selected catalog, enforce current quarantine/path guards,
