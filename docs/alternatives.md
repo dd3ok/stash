@@ -19,9 +19,9 @@ boundary is narrower:
 
 - keep an existing local catalog read-only or import a standalone skill into a
   managed inactive store;
-- expose one explicitly named router;
+- expose one explicit library entry point;
 - resolve exact names deterministically;
-- return every materially relevant result without a fixed total cap;
+- browse complete inventories without a fixed total cap;
 - read only the selected skill and requested resources;
 - avoid network access, telemetry, execution, external catalog mutation,
   plugin lifecycle, and vendor setting mutation.

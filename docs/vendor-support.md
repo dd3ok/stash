@@ -87,11 +87,9 @@ Because the last point cannot be enforced by metadata, the Adapter documentation
 
 Sources: [Antigravity Agent Skills](https://antigravity.google/docs/skills), [Antigravity IDE Plugins](https://antigravity.google/docs/ide/plugins).
 
-The current global standalone path is `~/.gemini/config/skills`; workspace
-skills use `.agents/skills` (with legacy `.agent/skills` support). Stash 0.2
-supports only the documented global user path; workspace, legacy, and arbitrary
-custom roots are rejected. Antigravity documents no skill-level manual-only
-override.
+Stash supports the documented global standalone path `~/.gemini/config/skills`.
+Workspace and custom roots are rejected. Antigravity documents no skill-level
+manual-only override.
 
 ## Google Antigravity CLI
 

@@ -8,8 +8,8 @@
     {
       "name": "stash",
       "source": "./adapters/claude-code",
-      "description": "Search read-only Agent Skills catalogs and manage an explicit local inactive store.",
-      "version": "0.2.0",
+      "description": "Browse read-only Agent Skills catalogs and manage an explicit local inactive store.",
+      "version": "0.3.0",
       "license": "MIT",
       "strict": true
     }

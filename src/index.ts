@@ -14,6 +14,8 @@ export type {
   CreateStashLifecycleOptions,
   DoctorRequest,
   DoctorResult,
+  SkillClassification,
+  ClassifyRequest,
   LifecycleActivateRequest,
   LifecycleArchiveRequest,
   LifecycleDeactivateRequest,

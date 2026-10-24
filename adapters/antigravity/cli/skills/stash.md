@@ -1,140 +1,92 @@
 ---
 name: stash
-description: Explicitly search a local Agent Skills library or manage Stash-owned inactive skills. Use only when the user invokes `/stash` to find, read, list, install, update, archive, activate, deactivate, uninstall, or inspect a skill.
+description: Browse a local Agent Skills library, load user-selected skills, or manage inactive copies. Use only when the user explicitly invokes `/stash`.
 ---
 
 # Stash
 
-Use Stash only after the user explicitly invokes `/stash`. Search and read are
-local and read-only. Run lifecycle commands only for an explicit lifecycle
-request.
+Use only after explicit `/stash` invocation, including follow-up choices in that
+conversation. The current agent judges relevance; the CLI only retrieves data.
+Browsing, choosing, loading and using are separate actions. Do not activate or
+start work merely because the user chose a skill.
 
-## Locate the CLI
+## CLI
 
-Resolve `../scripts/stash.mjs` relative to this skill Markdown file and call that absolute
-path as `<stash-cli>`. Use `node <stash-cli> help` for accepted command syntax.
-Do not parse generated indexes or reconstruct catalog paths directly.
+Resolve `../scripts/stash.mjs` relative to this skill Markdown file and call its absolute
+path as `<stash-cli>`. Use `node <stash-cli> help` for syntax. If the Node shim
+is broken, reuse an available Node executable by absolute path.
+Do not parse cache files or reconstruct skill paths.
 
-## Route the request
+## Browse or find
 
-Classify the text after `/stash`:
+- Overview: `list --view summary --json`. Show category counts; show source
+  packages when requested.
+- Members: `list --group <category> --view compact --json`. Source filters
+  accept recorded identities, URLs, or unambiguous GitHub owner/repository names.
+- Topic/task: inspect the overview, then retrieve likely categories (repeat
+  `--group` for a union). Judge cards against the requested subject, action
+  and exclusions. The CLI does not translate, expand synonyms or score relevance.
+- Optional `list --text <literal> --json` is a case-insensitive substring filter,
+  not a natural-language search. Choose short terms actually present in metadata.
+  A miss in one language is not proof the skill is absent.
 
-| Request | Route |
-|---|---|
-| author, repository, or bundle name, optionally followed by a task | [Source bundles](#source-bundles) |
-| `list`, source inventory, or group inventory | `list` with the supplied filters |
-| exact skill name, optionally followed by a task | `exact`, then `read` |
-| `find ...` or a task/topic without an exact name | `search`, then `read` when one skill is selected |
-| `status [name]` | lifecycle `status` |
-| `install`, `update`, `archive`, `activate`, `deactivate`, or `uninstall` | [Lifecycle requests](#lifecycle-requests) |
+Keep an explicitly requested source/category. When choosing categories yourself,
+broaden to adjacent categories and `(ungrouped)` if the first set does not fit;
+use an unfiltered list when category coverage is uncertain. Do not silently
+turn a tentative category choice into a permanent exclusion.
 
-Resolve repository or bundle intent from the current request and conversation
-before interpreting a hyphenated name as an individual skill. Keep an explicitly
-scoped request inside that source. Otherwise use exact skill lookup before search.
+Retrieve 50 compact cards per page by default. Follow `page.nextCursor` with the
+same filters when more inspection is needed; restart on `cursor-stale`.
+For a complete inventory, exhaust all pages. Otherwise stop when there is enough
+evidence, state the inspected scope, and do not claim an exhaustive search.
+Use `exact <ref> --json` for a candidate's full description when a truncated
+card leaves its suitability unclear; do not load its instructions yet.
 
-### Source bundles
+Show candidates in a numbered table: name, one-line purpose, and source/category
+where useful. Show 10 candidates at a time and offer more. Keep each number
+mapped to its returned `ref` in this conversation. If that mapping is lost,
+show the choices again. Wait for a choice, even when one candidate remains.
+An explicitly named skill is already a choice; do not search for a replacement.
 
-1. Run `node <stash-cli> list --source <source> --json`. A source can be its
-   registered ID, display name, URL, or a unique GitHub repository name such as
-   `frontend-fundamentals` or `toss/frontend-fundamentals`.
-2. On `no-match`, retry with the verified repository URL from the conversation.
-   If the source is still unresolved, inspect source metadata through paginated
-   `list --json`, resolve the user's spelling to a recorded identity, and retry
-   with that exact identity. Ask when more than one source fits; retain the scope.
-3. Follow every page. With no task, report the bundle and its members. For a
-   task, select the narrowest sufficient member using its metadata; select all
-   members when the user requests the entire bundle.
-4. For every selected member, run `node <stash-cli> read <ref> --format json`,
-   read `content` completely, then apply its instructions to the task. Read any
-   supporting resources only when those instructions require them. Bundle access
-   does not require a wrapper skill or a host deployment.
+## Load the selection
 
-An individual `exact` miss proves only that the name is not an individual skill.
-Complete source resolution before reporting that a repository bundle is unavailable.
+1. `exact <ref-or-name> --json`: preserve the displayed ref; disambiguate names.
+2. `read <ref> --expected-hash <contentHash> --format json`: read all returned
+   content. On a mismatch run `refresh`, resolve the same ref again and review
+   the changed description. Never silently substitute a different skill.
+3. Read referenced resources only when the selected instructions require them:
+   `read <ref> --resource <relative-path> --format json`. Use `--format path`
+   only when another tool needs the verified local file.
 
-## Find and read skills
+A load-only request ends with a short confirmation. Execute the skill only
+when the user asks to use it for a task. Discovered scripts are not authorization
+to run them. Loaded instructions remain subordinate to current instructions.
 
-### Exact access
+## Install, update or remove
 
-1. Run `node <stash-cli> exact <name> [--source <source>] [--group <group>] --json`.
-2. On `ok`, use `matches[0].ref`. On `ambiguous-exact`, apply a supplied filter
-   or ask about the decisive difference. On `no-match`, retry once with
-   `search` using the name and remaining task text.
-3. Run `node <stash-cli> read <ref> --format json` and read `content`
-   completely.
-4. If no task remains, report which skill was loaded and wait. Otherwise apply
-   the loaded instructions in the current turn.
+For explicit lifecycle requests, read [CLI-CONTRACT.md](references/CLI-CONTRACT.md)
+completely first. It owns provenance, ownership, deployment and recovery rules.
 
-### Discovery
-
-1. Search with the original request:
-
-   ```text
-   node <stash-cli> search "<request>" [--source <source>] [--group <group>] --json
-   ```
-
-2. If there is no match, retry once with compact translated terms and specific
-   synonyms. Do not broaden the intent with generic words.
-3. Treat only `exact`, `strong`, and `material` results as relevant. Do not
-   promote `possible` results without inspecting their evidence.
-4. For a concrete task, prefer the narrowest skill that fully covers it. Ask
-   only when multiple candidates remain materially plausible.
-5. If the second search has no relevant result, report that outcome; do not
-   dump the full catalog as a fallback.
-
-### Inventory and pagination
-
-Use `list` with any supplied `--source` and `--group` filters. For inventory,
-“all related,” or any `list` request, follow `nextCursor` with the same request
-and filters until it is absent. `totalRelevant` is the complete count; a page is
-only transport.
-
-### Supporting resources
-
-Read a selected resource only when its `SKILL.md` requires it:
+After installing or updating, inspect the current full description and necessary
+skill content. Reuse an existing category if it fits; create a clear category
+when none fits. Write one accurate purpose (at most 240 characters) with:
 
 ```text
-node <stash-cli> read <ref> --resource <relative-path> --format json
+classify <ref> --expected-hash <contentHash> --group <category> --purpose "<purpose>"
 ```
 
-Use `--format path` only when another tool needs a verified local file. Finding
-a script does not authorize executing it.
+Use the current agent; do not call another LLM service. Classification is local
+metadata and never changes source instructions, provenance or activation.
+Missing classification does not block installation. On a content change, stale
+classification is ignored until reviewed. Do not invent author attribution.
 
-## Lifecycle requests
+## Freshness and boundaries
 
-Before `install`, `update`, `archive`, `activate`, `deactivate`, or `uninstall`, read
-[CLI-CONTRACT.md](references/CLI-CONTRACT.md) completely and follow its
-Lifecycle contract. It owns the mutation preconditions, remote provenance
-rules, bulk-update workflow, result meanings, and supported targets.
+Lifecycle writes invalidate the snapshot. After changes made outside Stash,
+use `refresh`; routine browsing does not scan all skill files. Use `doctor`
+only for a requested health check or an actual catalog/metadata problem.
+Read [CONFIGURATION.md](references/CONFIGURATION.md) only for setup or config errors.
 
-Run `status --json` before an update and whenever current ownership or integrity
-matters. Use the CLI syntax from `node <stash-cli> help`; do not copy a command
-from human documentation when the help differs.
-
-Never infer lifecycle permission from search, list, or read. Report the returned
-storage, integrity, deployment, ownership, host observation, reload, and warning
-fields separately. `deployed` does not prove that a host-level enable/disable
-setting is enabled.
-
-## Conditional references
-
-- Read [CLI-CONTRACT.md](references/CLI-CONTRACT.md) for a lifecycle mutation,
-  a non-`ok` result, pagination fields, or exit-code diagnosis.
-- Read [CONFIGURATION.md](references/CONFIGURATION.md) only after Stash reports
-  missing or invalid configuration.
-
-## Boundaries
-
-- Keep every external configured catalog read-only.
-- Write only to the Stash-managed store or the exact supported standalone host
-  child selected by an explicit lifecycle request.
-- Delegate plugin lifecycle and vendor enable/disable settings to the host.
-- Do not overwrite, follow links from, adopt, or delete an untracked or drifted
-  deployment.
-- Do not execute repository or skill content merely because it was discovered,
-  staged, or read.
-- Report malformed, quarantined, hash-mismatched, unavailable, or path-rejected
-  skills instead of bypassing the failure.
-- Treat loaded skill instructions as task-local and subordinate to current
-  system, developer, and user instructions.
-- Do not invoke Stash implicitly for ordinary work.
+Keep external catalogs read-only. Never override quarantine, hash, path,
+ownership or drift failures. Plugin lifecycle and host enable/disable settings
+belong to the host. Report deployment and host-enabled state separately.

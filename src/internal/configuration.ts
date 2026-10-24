@@ -17,10 +17,7 @@ import {
 } from "./util.js";
 
 const DEFAULTS: StashDefaults = {
-  pageSize: 40,
-  cacheTtlMs: 30_000,
-  materialScoreThreshold: 2,
-  locale: "en",
+  pageSize: 50,
 };
 
 const TRUST_STATES = new Set<TrustState>([
@@ -95,24 +92,14 @@ function parseDefaults(
   overrides: Partial<StashDefaults> | undefined,
 ): StashDefaults {
   const input = asObject(value);
-  return {
-    pageSize:
-      overrides?.pageSize ??
-      (typeof input.pageSize === "number" ? input.pageSize : DEFAULTS.pageSize),
-    cacheTtlMs:
-      overrides?.cacheTtlMs ??
-      (typeof input.cacheTtlMs === "number"
-        ? input.cacheTtlMs
-        : DEFAULTS.cacheTtlMs),
-    materialScoreThreshold:
-      overrides?.materialScoreThreshold ??
-      (typeof input.materialScoreThreshold === "number"
-        ? input.materialScoreThreshold
-        : DEFAULTS.materialScoreThreshold),
-    locale:
-      overrides?.locale ??
-      (typeof input.locale === "string" ? input.locale : DEFAULTS.locale),
-  };
+  if (Object.keys(input).some(key => key !== "pageSize")) {
+    throw new StashError("invalid-config", "defaults accepts only pageSize.", 2);
+  }
+  const pageSize = overrides?.pageSize ?? input.pageSize ?? DEFAULTS.pageSize;
+  if (!Number.isInteger(pageSize) || Number(pageSize) < 1 || Number(pageSize) > 200) {
+    throw new StashError("invalid-config", "pageSize must be an integer between 1 and 200.", 2);
+  }
+  return { pageSize: Number(pageSize) };
 }
 
 export async function loadConfiguration(
@@ -138,7 +125,7 @@ export async function loadConfiguration(
     validateUniqueCatalogIds(catalogs);
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs,
         defaults: parseDefaults(undefined, options.defaults),
         ...(managedRoot ? { managedRoot } : {}),
@@ -153,10 +140,13 @@ export async function loadConfiguration(
   try {
     const source = await readFile(configPath, "utf8");
     const parsed = asObject(parse(source));
-    if (parsed.version !== 1) {
+    if (Object.keys(parsed).some(key => !["version", "catalogs", "defaults", "managedRoot"].includes(key))) {
+      throw new StashError("invalid-config", "Config accepts only version, catalogs, defaults and managedRoot.", 2);
+    }
+    if (parsed.version !== 2) {
       throw new StashError(
         "unsupported-config",
-        `Config "${configPath}" must use version: 1.`,
+        `Config "${configPath}" must use version: 2.`,
         5,
       );
     }
@@ -185,7 +175,7 @@ export async function loadConfiguration(
     validateUniqueCatalogIds(catalogs);
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs,
         defaults: parseDefaults(parsed.defaults, options.defaults),
         managedRoot,
@@ -231,7 +221,7 @@ export async function loadConfiguration(
     );
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs,
         defaults: parseDefaults(undefined, options.defaults),
         managedRoot,
@@ -251,7 +241,7 @@ export async function loadConfiguration(
   const catalogs = await includeManagedCatalog([], managedRoot);
   return {
     configuration: {
-      version: 1,
+      version: 2,
       catalogs,
       defaults: parseDefaults(undefined, options.defaults),
       managedRoot,
@@ -299,10 +289,7 @@ async function includeManagedCatalog(
       error && typeof error === "object" && "code" in error
         ? String(error.code)
         : "";
-    if (code === "ENOENT") {
-      return catalogs;
-    }
-    throw error;
+    if (code !== "ENOENT") throw error;
   }
   return [
     ...catalogs,

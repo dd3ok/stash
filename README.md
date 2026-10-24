@@ -3,19 +3,27 @@
 English | [한국어](README.ko.md)
 
 Stash keeps occasional [`SKILL.md`](https://agentskills.io) packages outside a
-host's normal discovery path. Invoke `$stash` explicitly to open an exact skill,
-search a local library by task, or manage an inactive standalone copy.
+host's normal discovery path. Invoke `$stash` explicitly to browse the library,
+load a skill you choose, or manage an inactive standalone copy.
 
 ```text
-$stash design-system
-→ load that exact stored skill
+$stash
+→ show categories; source choices are available on request
 
-$stash find every skill for reviewing API documentation
-→ return every materially relevant stored skill
+$stash list frontend
+→ show a numbered page with names, short purposes, and sources
+
+Load number 2
+→ read only that choice; do not start work or change activation
+
+$stash use design-system to build a button
+→ load that named skill and perform the requested task
 ```
 
-Search is local and read-only. It never downloads, installs, updates, or
-executes a skill.
+The current host agent interprets your request and judges compact metadata;
+Stash retrieves it without a second model call. Candidate lists show 10 at a time;
+internal retrieval defaults to 50 cards per page. Ask for more or a complete list.
+Browsing never installs, activates, or executes skills.
 
 ## When to use it
 
@@ -30,12 +38,13 @@ host discovery
      └── explicit request → local library → selected SKILL.md
 ```
 
-Stash performs deterministic exact lookup first and uses local lexical search
-for task discovery. Pagination never truncates the total relevant set.
+Names and refs resolve exactly. Topic discovery uses category/source lists and
+optional literal filtering, without relevance scores or synonym dictionaries.
 
 ## Quick start
 
-Requires Node.js 20 or later.
+Requires Node.js 20 or later and the
+[OS trash provider](docs/installation.md#requirements) for build/test cleanup.
 
 ```bash
 npm ci
@@ -48,11 +57,13 @@ Try the sample catalog:
 ```bash
 node skills/stash/scripts/stash.mjs doctor --config examples/config.yaml
 node skills/stash/scripts/stash.mjs exact design-system --config examples/config.yaml --json
-node skills/stash/scripts/stash.mjs search "frontend component tokens" --config examples/config.yaml --json
+node skills/stash/scripts/stash.mjs list --group frontend --config examples/config.yaml --json
 ```
 
-See [configuration](skills/stash/references/CONFIGURATION.md) and the
-[catalog format](docs/catalog-format.md) to add your own read-only library.
+Install your inactive skills in the managed store below. Use
+[configuration](skills/stash/references/CONFIGURATION.md) and the
+[catalog format](docs/catalog-format.md) only to connect an existing library
+for read-only search.
 
 ## Managed inactive skills
 
@@ -108,7 +119,7 @@ version before support is claimed.
 - [Configuration](skills/stash/references/CONFIGURATION.md)
 - [Architecture](docs/architecture.md)
 - [Library format](docs/catalog-format.md)
-- [Routing](docs/routing.md)
+- [Retrieval](docs/retrieval.md)
 - [Vendor support](docs/vendor-support.md)
 - [Security](SECURITY.md)
 - [Maintenance](docs/maintenance.md)

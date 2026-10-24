@@ -15,6 +15,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parse } from "yaml";
 import type {
+  ClassifyRequest,
   CreateStashLifecycleOptions,
   LifecycleActivateRequest,
   LifecycleArchiveRequest,
@@ -35,6 +36,9 @@ import type {
 } from "./types.js";
 import { StashError } from "./types.js";
 import { loadConfiguration } from "./internal/configuration.js";
+import { createStashCatalog } from "./stash-catalog.js";
+import { readClassifications, validateClassification, writeClassifications } from "./internal/classification.js";
+import { recyclePath } from "./internal/recycle-bin.js";
 import {
   lifecycleRefreshObservation,
   lifecycleReloadRequired,
@@ -398,11 +402,13 @@ async function isPluginContained(source: string): Promise<boolean> {
 class StashLifecycleImplementation implements StashLifecycle {
   readonly #managedRoot: string;
   readonly #now: () => number;
+  readonly #options: CreateStashLifecycleOptions;
   readonly #lifecycleHome = path.resolve(homedir());
 
-  constructor(managedRoot: string, now: () => number) {
+  constructor(managedRoot: string, now: () => number, options: CreateStashLifecycleOptions) {
     this.#managedRoot = path.resolve(managedRoot);
     this.#now = now;
+    this.#options = options;
   }
 
   #metadataRoot(): string {
@@ -738,11 +744,7 @@ class StashLifecycleImplementation implements StashLifecycle {
     if (type === "missing") {
       return;
     }
-    if (type === "directory") {
-      await rm(target, { recursive: true, force: true });
-      return;
-    }
-    await unlink(target);
+    await recyclePath(target);
   }
 
   async #recoverUpdateJournal(
@@ -805,6 +807,16 @@ class StashLifecycleImplementation implements StashLifecycle {
         throw new StashError(
           "lifecycle-recovery-conflict",
           `Authorized managed update cleanup lost its canonical tree for "${journal.name}".`,
+          4,
+        );
+      }
+      const discardHash = await this.#journalTreeHash(discardPath, "Managed update discard");
+      const expectedHash = record.treeHash === journal.newTreeHash
+        ? journal.oldTreeHash : journal.newTreeHash;
+      if (discardHash !== undefined && discardHash !== expectedHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update discard drifted for "${journal.name}".`,
           4,
         );
       }
@@ -1117,11 +1129,7 @@ class StashLifecycleImplementation implements StashLifecycle {
     if (type === "missing") {
       return;
     }
-    if (type === "directory") {
-      await rm(target, { recursive: true, force: true });
-      return;
-    }
-    await unlink(target);
+    await recyclePath(target);
   }
 
   async #recoverUninstallJournal(
@@ -1140,6 +1148,19 @@ class StashLifecycleImplementation implements StashLifecycle {
           4,
         );
       }
+      const treeHash = await this.#journalTreeHash(
+        journal.treeTombstone, "Managed uninstall tree tombstone",
+      );
+      if (treeHash !== undefined && treeHash !== journal.treeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed uninstall tree drifted for "${journal.name}".`,
+          4,
+        );
+      }
+      await this.#journalRecordHash(
+        journal, journal.recordTombstone, "Managed uninstall record tombstone",
+      );
       await this.#removeAuthorizedUninstallPath(
         journal,
         journal.treeTombstone,
@@ -1269,7 +1290,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           4,
         );
       }
-      await rm(journal.managedPath, { recursive: true, force: false });
+      await recyclePath(journal.managedPath);
     }
     await unlink(this.#recordPath(journal.name)).catch((error: unknown) => {
       const code =
@@ -1338,12 +1359,15 @@ class StashLifecycleImplementation implements StashLifecycle {
     const sourceType = await pathType(journal.source);
     const tombstoneType = await pathType(journal.tombstone);
     if (journal.stage === "cleanup-authorized") {
-      const currentType = await pathType(journal.tombstone);
-      if (currentType === "directory") {
-        await rm(journal.tombstone, { recursive: true, force: true });
-      } else if (currentType !== "missing") {
-        await unlink(journal.tombstone);
+      const treeHash = await this.#journalTreeHash(journal.tombstone, "Archive tombstone");
+      if (treeHash !== undefined && treeHash !== journal.treeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Archive tombstone drifted: "${journal.tombstone}".`,
+          4,
+        );
       }
+      await recyclePath(journal.tombstone);
       await unlink(journalPath);
       return;
     }
@@ -1365,7 +1389,7 @@ class StashLifecycleImplementation implements StashLifecycle {
           );
         }
         await this.#advanceJournal(journal, "cleanup-authorized");
-        await rm(journal.tombstone, { recursive: true, force: true });
+        await recyclePath(journal.tombstone);
       }
       await unlink(journalPath);
       return;
@@ -1622,11 +1646,40 @@ class StashLifecycleImplementation implements StashLifecycle {
     const owner = await this.#acquireLock(lockPath);
     try {
       await this.#assertManagedLayout();
+      // Publish invalidation before any commit; readers refuse the held lock.
+      const revision = path.join(this.#metadataRoot(), "revision");
+      const temporary = `${revision}.${randomUUID()}.tmp`;
+      await writeFile(temporary, randomUUID(), { encoding: "utf8", flag: "wx" });
+      try { await rename(temporary, revision); }
+      catch (error) { await recyclePath(temporary).catch(() => undefined); throw error; }
       await this.#recoverJournals();
       return await operation();
     } finally {
       await this.#releaseLock(lockPath, owner);
     }
+  }
+
+  async classify(request: ClassifyRequest): Promise<{ status: "classified"; ref: string }> {
+    validateClassification(request);
+    if (!/^[a-z0-9][a-z0-9._-]*:.+$/u.test(request.ref)) {
+      throw new StashError("invalid-argument", "classify requires an exact catalog ref.", 2);
+    }
+    return this.#withLock(async () => {
+      const catalog = await createStashCatalog({ ...this.#options, managedRoot: this.#managedRoot });
+      const selected = await catalog.read({ ref: request.ref, expectedHash: request.contentHash });
+      if (selected.status !== "ok") {
+        throw new StashError(selected.status, "Classification requires the current, readable SKILL.md content hash.", 3);
+      }
+      const data = await readClassifications(this.#managedRoot);
+      const { ref, ...classification } = request;
+      const previous = data.skills[ref];
+      if (classification.source === undefined && previous?.contentHash === classification.contentHash && previous.source !== undefined) {
+        classification.source = previous.source;
+      }
+      data.skills[ref] = classification;
+      await writeClassifications(this.#managedRoot, data);
+      return { status: "classified", ref };
+    });
   }
 
   async #readRecord(name: string): Promise<ManagedSkillRecord | undefined> {
@@ -1938,7 +1991,7 @@ class StashLifecycleImplementation implements StashLifecycle {
       try {
         await this.#writeRecord(record);
       } catch (error) {
-        await rm(managedPath, { recursive: true, force: false }).catch(
+        await recyclePath(managedPath).catch(
           () => undefined,
         );
         throw error;
@@ -1946,7 +1999,7 @@ class StashLifecycleImplementation implements StashLifecycle {
       return { record, managedPath, created: true };
     } finally {
       if (!committed) {
-        await rm(stage, { recursive: true, force: true }).catch(() => undefined);
+        await recyclePath(stage).catch(() => undefined);
       }
     }
   }
@@ -2488,7 +2541,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         let warning: string | undefined;
         try {
           await this.#advanceJournal(journal, "cleanup-authorized");
-          await rm(tombstone, { recursive: true, force: true });
+          await recyclePath(tombstone);
         } catch (error) {
           warning = `The skill is outside host discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
         }
@@ -2615,7 +2668,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         try {
           await this.#writeRecord(record);
         } catch (error) {
-          await rm(deploymentPath, { recursive: true, force: false }).catch(
+          await recyclePath(deploymentPath).catch(
             () => undefined,
           );
           throw error;
@@ -2633,7 +2686,7 @@ class StashLifecycleImplementation implements StashLifecycle {
         };
       } finally {
         if (!committed) {
-          await rm(stage, { recursive: true, force: true }).catch(() => undefined);
+          await recyclePath(stage).catch(() => undefined);
         }
       }
     });
@@ -2722,7 +2775,7 @@ class StashLifecycleImplementation implements StashLifecycle {
       }
       let warning: string | undefined;
       try {
-        await rm(tombstone, { recursive: true, force: false });
+        await recyclePath(tombstone);
       } catch (error) {
         warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
       }
@@ -2933,6 +2986,16 @@ class StashLifecycleImplementation implements StashLifecycle {
         const cleanupWarning = `Uninstall committed, but verified cleanup remains for recovery: ${String(error)}`;
         warning = warning ? `${warning} ${cleanupWarning}` : cleanupWarning;
       }
+      try {
+        const classifications = await readClassifications(this.#managedRoot);
+        const ref = `managed:${record.name}`;
+        if (Object.hasOwn(classifications.skills, ref)) {
+          delete classifications.skills[ref];
+          await writeClassifications(this.#managedRoot, classifications);
+        }
+      } catch (error) {
+        warning = `${warning ?? ""} Classification cleanup needs review: ${String(error)}`.trim();
+      }
       return {
         status: "uninstalled",
         name: record.name,
@@ -3103,5 +3166,6 @@ export async function createStashLifecycle(
   return new StashLifecycleImplementation(
     managedRoot,
     options.now ?? Date.now,
+    effectiveOptions,
   );
 }

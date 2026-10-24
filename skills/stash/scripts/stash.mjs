@@ -113,17 +113,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key, node, visitor, path9) {
-      const ctrl = callVisitor(key, node, visitor, path9);
+    function visit_(key, node, visitor, path12) {
+      const ctrl = callVisitor(key, node, visitor, path12);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path9, ctrl);
-        return visit_(key, ctrl, visitor, path9);
+        replaceNode(key, path12, ctrl);
+        return visit_(key, ctrl, visitor, path12);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path9 = Object.freeze(path9.concat(node));
+          path12 = Object.freeze(path12.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path9);
+            const ci = visit_(i, node.items[i], visitor, path12);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -134,13 +134,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path9 = Object.freeze(path9.concat(node));
-          const ck = visit_("key", node.key, visitor, path9);
+          path12 = Object.freeze(path12.concat(node));
+          const ck = visit_("key", node.key, visitor, path12);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path9);
+          const cv = visit_("value", node.value, visitor, path12);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -161,17 +161,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key, node, visitor, path9) {
-      const ctrl = await callVisitor(key, node, visitor, path9);
+    async function visitAsync_(key, node, visitor, path12) {
+      const ctrl = await callVisitor(key, node, visitor, path12);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key, path9, ctrl);
-        return visitAsync_(key, ctrl, visitor, path9);
+        replaceNode(key, path12, ctrl);
+        return visitAsync_(key, ctrl, visitor, path12);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path9 = Object.freeze(path9.concat(node));
+          path12 = Object.freeze(path12.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path9);
+            const ci = await visitAsync_(i, node.items[i], visitor, path12);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -182,13 +182,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path9 = Object.freeze(path9.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path9);
+          path12 = Object.freeze(path12.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path12);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path9);
+          const cv = await visitAsync_("value", node.value, visitor, path12);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -215,23 +215,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key, node, visitor, path9) {
+    function callVisitor(key, node, visitor, path12) {
       if (typeof visitor === "function")
-        return visitor(key, node, path9);
+        return visitor(key, node, path12);
       if (identity.isMap(node))
-        return visitor.Map?.(key, node, path9);
+        return visitor.Map?.(key, node, path12);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key, node, path9);
+        return visitor.Seq?.(key, node, path12);
       if (identity.isPair(node))
-        return visitor.Pair?.(key, node, path9);
+        return visitor.Pair?.(key, node, path12);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key, node, path9);
+        return visitor.Scalar?.(key, node, path12);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key, node, path9);
+        return visitor.Alias?.(key, node, path12);
       return void 0;
     }
-    function replaceNode(key, path9, node) {
-      const parent = path9[path9.length - 1];
+    function replaceNode(key, path12, node) {
+      const parent = path12[path12.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key] = node;
       } else if (identity.isPair(parent)) {
@@ -841,10 +841,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path9, value) {
+    function collectionFromPath(schema, path12, value) {
       let v = value;
-      for (let i = path9.length - 1; i >= 0; --i) {
-        const k = path9[i];
+      for (let i = path12.length - 1; i >= 0; --i) {
+        const k = path12[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -863,7 +863,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path9) => path9 == null || typeof path9 === "object" && !!path9[Symbol.iterator]().next().done;
+    var isEmptyPath = (path12) => path12 == null || typeof path12 === "object" && !!path12[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -893,11 +893,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path9, value) {
-        if (isEmptyPath(path9))
+      addIn(path12, value) {
+        if (isEmptyPath(path12))
           this.add(value);
         else {
-          const [key, ...rest] = path9;
+          const [key, ...rest] = path12;
           const node = this.get(key, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -911,8 +911,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path9) {
-        const [key, ...rest] = path9;
+      deleteIn(path12) {
+        const [key, ...rest] = path12;
         if (rest.length === 0)
           return this.delete(key);
         const node = this.get(key, true);
@@ -926,8 +926,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path9, keepScalar) {
-        const [key, ...rest] = path9;
+      getIn(path12, keepScalar) {
+        const [key, ...rest] = path12;
         const node = this.get(key, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -945,8 +945,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path9) {
-        const [key, ...rest] = path9;
+      hasIn(path12) {
+        const [key, ...rest] = path12;
         if (rest.length === 0)
           return this.has(key);
         const node = this.get(key, true);
@@ -956,8 +956,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path9, value) {
-        const [key, ...rest] = path9;
+      setIn(path12, value) {
+        const [key, ...rest] = path12;
         if (rest.length === 0) {
           this.set(key, value);
         } else {
@@ -1277,9 +1277,9 @@ ${indent}`) + "'";
         return quotedString(value, ctx);
       }
       const indent = ctx.indent || (ctx.forceBlockIndent || containsDocumentMarker(value) ? "  " : "");
-      const literal = blockQuote === "literal" ? true : blockQuote === "folded" || type === Scalar.Scalar.BLOCK_FOLDED ? false : type === Scalar.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value, lineWidth, indent.length);
+      const literal2 = blockQuote === "literal" ? true : blockQuote === "folded" || type === Scalar.Scalar.BLOCK_FOLDED ? false : type === Scalar.Scalar.BLOCK_LITERAL ? true : !lineLengthOverLimit(value, lineWidth, indent.length);
       if (!value)
-        return literal ? "|\n" : ">\n";
+        return literal2 ? "|\n" : ">\n";
       let chomp;
       let endStart;
       for (endStart = value.length; endStart > 0; --endStart) {
@@ -1328,7 +1328,7 @@ ${indent}`) + "'";
         if (onComment)
           onComment();
       }
-      if (!literal) {
+      if (!literal2) {
         const foldedValue = value.replace(/\n+/g, "\n$&").replace(/(?:^|\n)([\t ].*)(?:([\n\t ]*)\n(?![\n\t ]))?/g, "$1$2").replace(/\n+/g, `$&${indent}`);
         let literalFallback = false;
         const foldOptions = getFoldOptions(ctx, true);
@@ -3472,9 +3472,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path9, value) {
+      addIn(path12, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path9, value);
+          this.contents.addIn(path12, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -3549,14 +3549,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path9) {
-        if (Collection.isEmptyPath(path9)) {
+      deleteIn(path12) {
+        if (Collection.isEmptyPath(path12)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path9) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path12) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -3571,10 +3571,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path9, keepScalar) {
-        if (Collection.isEmptyPath(path9))
+      getIn(path12, keepScalar) {
+        if (Collection.isEmptyPath(path12))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path9, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path12, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -3585,10 +3585,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path9) {
-        if (Collection.isEmptyPath(path9))
+      hasIn(path12) {
+        if (Collection.isEmptyPath(path12))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path9) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path12) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -3605,13 +3605,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path9, value) {
-        if (Collection.isEmptyPath(path9)) {
+      setIn(path12, value) {
+        if (Collection.isEmptyPath(path12)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path9), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path12), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path9, value);
+          this.contents.setIn(path12, value);
         }
       }
       /**
@@ -5571,9 +5571,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path9) => {
+    visit.itemAtPath = (cst, path12) => {
       let item = cst;
-      for (const [field, index] of path9) {
+      for (const [field, index] of path12) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -5582,23 +5582,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path9) => {
-      const parent = visit.itemAtPath(cst, path9.slice(0, -1));
-      const field = path9[path9.length - 1][0];
+    visit.parentCollection = (cst, path12) => {
+      const parent = visit.itemAtPath(cst, path12.slice(0, -1));
+      const field = path12[path12.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path9, item, visitor) {
-      let ctrl = visitor(item, path9);
+    function _visit(path12, item, visitor) {
+      let ctrl = visitor(item, path12);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path9.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path12.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -5609,10 +5609,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path9);
+            ctrl = ctrl(item, path12);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path9) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path12) : ctrl;
     }
     exports.visit = visit;
   }
@@ -7364,12 +7364,12 @@ var require_dist = __commonJS({
 });
 
 // src/stash-catalog.ts
-import { readFile as readFile5, realpath as realpath5, stat as stat4 } from "node:fs/promises";
-import path6 from "node:path";
+import { readFile as readFile7, realpath as realpath5, stat as stat4 } from "node:fs/promises";
+import path9 from "node:path";
 
 // src/types.ts
-var RESULT_SCHEMA_VERSION = 1;
-var INDEX_SCHEMA_VERSION = 2;
+var RESULT_SCHEMA_VERSION = 2;
+var INDEX_SCHEMA_VERSION = 4;
 var StashError = class extends Error {
   exitCode;
   code;
@@ -7391,32 +7391,21 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { homedir, platform } from "node:os";
 import path from "node:path";
-var STOP_WORDS = /* @__PURE__ */ new Set([
-  "a",
-  "an",
-  "and",
-  "about",
-  "for",
-  "find",
-  "list",
-  "me",
-  "of",
-  "or",
-  "show",
-  "skill",
-  "skills",
-  "tell",
-  "the",
-  "to",
-  "with",
-  "\uAD00\uB828",
-  "\uBAA9\uB85D",
-  "\uBCF4\uC5EC\uC918",
-  "\uC2A4\uD0AC",
-  "\uC2A4\uD0AC\uB4E4",
-  "\uC54C\uB824\uC918",
-  "\uCC3E\uC544\uC918"
-]);
+function sourceDisplayName(source) {
+  if (source?.url) {
+    try {
+      const parsed = new URL(source.url);
+      if (parsed.hostname.toLocaleLowerCase("und") === "github.com") {
+        const parts = parsed.pathname.replace(/^\/+|\/+$/gu, "").split("/");
+        if (parts.length >= 2) {
+          return `${parts[0]}/${parts[1].replace(/\.git$/iu, "")}`;
+        }
+      }
+    } catch {
+    }
+  }
+  return source?.displayName ?? source?.id ?? source?.url ?? "(unattributed)";
+}
 function sha256(value) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
@@ -7430,12 +7419,6 @@ async function sha256File(filePath) {
   });
   return `sha256:${hash.digest("hex")}`;
 }
-function normalizeText(value) {
-  return value.normalize("NFKC").toLocaleLowerCase("und").replace(/[_/\\]+/gu, " ").replace(/[-‐‑‒–—]+/gu, " ").replace(/[^\p{L}\p{N}\s]+/gu, " ").replace(/\s+/gu, " ").trim();
-}
-function compactText(value) {
-  return normalizeText(value).replace(/\s+/gu, "");
-}
 function normalizeSourceIdentity(value) {
   return value.normalize("NFKC").toLocaleLowerCase("und").replace(/\s+/gu, " ").trim();
 }
@@ -7445,40 +7428,6 @@ function normalizeSourceUrl(value) {
   } catch {
     return void 0;
   }
-}
-function tokenize(value) {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return [];
-  }
-  return [
-    ...new Set(
-      normalized.split(/\s+/u).filter((token) => token.length >= 2 && !STOP_WORDS.has(token))
-    )
-  ];
-}
-function trigrams(value) {
-  const compact = compactText(value);
-  if (compact.length <= 3) {
-    return compact ? /* @__PURE__ */ new Set([compact]) : /* @__PURE__ */ new Set();
-  }
-  const result = /* @__PURE__ */ new Set();
-  for (let index = 0; index <= compact.length - 3; index += 1) {
-    result.add(compact.slice(index, index + 3));
-  }
-  return result;
-}
-function jaccard(left, right) {
-  if (left.size === 0 || right.size === 0) {
-    return 0;
-  }
-  let intersection = 0;
-  for (const value of left) {
-    if (right.has(value)) {
-      intersection += 1;
-    }
-  }
-  return intersection / (left.size + right.size - intersection);
 }
 function isPathInside(root, candidate) {
   const relative = path.relative(root, candidate);
@@ -7569,9 +7518,6 @@ function platformManagedPath() {
     "managed"
   );
 }
-function safeCatalogSegment(value) {
-  return value.replace(/[^a-zA-Z0-9._-]/gu, "_");
-}
 function clampPageSize(value, fallback) {
   if (value === void 0 || !Number.isFinite(value)) {
     return fallback;
@@ -7635,10 +7581,7 @@ function decodeCursor(cursor) {
 
 // src/internal/configuration.ts
 var DEFAULTS = {
-  pageSize: 40,
-  cacheTtlMs: 3e4,
-  materialScoreThreshold: 2,
-  locale: "en"
+  pageSize: 50
 };
 var TRUST_STATES = /* @__PURE__ */ new Set([
   "trusted",
@@ -7689,12 +7632,14 @@ function parseCatalog(value, baseDir, index) {
 }
 function parseDefaults(value, overrides) {
   const input = asObject(value);
-  return {
-    pageSize: overrides?.pageSize ?? (typeof input.pageSize === "number" ? input.pageSize : DEFAULTS.pageSize),
-    cacheTtlMs: overrides?.cacheTtlMs ?? (typeof input.cacheTtlMs === "number" ? input.cacheTtlMs : DEFAULTS.cacheTtlMs),
-    materialScoreThreshold: overrides?.materialScoreThreshold ?? (typeof input.materialScoreThreshold === "number" ? input.materialScoreThreshold : DEFAULTS.materialScoreThreshold),
-    locale: overrides?.locale ?? (typeof input.locale === "string" ? input.locale : DEFAULTS.locale)
-  };
+  if (Object.keys(input).some((key) => key !== "pageSize")) {
+    throw new StashError("invalid-config", "defaults accepts only pageSize.", 2);
+  }
+  const pageSize = overrides?.pageSize ?? input.pageSize ?? DEFAULTS.pageSize;
+  if (!Number.isInteger(pageSize) || Number(pageSize) < 1 || Number(pageSize) > 200) {
+    throw new StashError("invalid-config", "pageSize must be an integer between 1 and 200.", 2);
+  }
+  return { pageSize: Number(pageSize) };
 }
 async function loadConfiguration(options) {
   const cacheDir = path2.resolve(options.cacheDir ?? platformCachePath());
@@ -7710,7 +7655,7 @@ async function loadConfiguration(options) {
     validateUniqueCatalogIds(catalogs2);
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs: catalogs2,
         defaults: parseDefaults(void 0, options.defaults),
         ...managedRoot2 ? { managedRoot: managedRoot2 } : {}
@@ -7723,10 +7668,13 @@ async function loadConfiguration(options) {
   try {
     const source = await readFile(configPath, "utf8");
     const parsed = asObject((0, import_yaml.parse)(source));
-    if (parsed.version !== 1) {
+    if (Object.keys(parsed).some((key) => !["version", "catalogs", "defaults", "managedRoot"].includes(key))) {
+      throw new StashError("invalid-config", "Config accepts only version, catalogs, defaults and managedRoot.", 2);
+    }
+    if (parsed.version !== 2) {
       throw new StashError(
         "unsupported-config",
-        `Config "${configPath}" must use version: 1.`,
+        `Config "${configPath}" must use version: 2.`,
         5
       );
     }
@@ -7749,7 +7697,7 @@ async function loadConfiguration(options) {
     validateUniqueCatalogIds(catalogs2);
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs: catalogs2,
         defaults: parseDefaults(parsed.defaults, options.defaults),
         managedRoot: managedRoot2
@@ -7788,7 +7736,7 @@ async function loadConfiguration(options) {
     );
     return {
       configuration: {
-        version: 1,
+        version: 2,
         catalogs: catalogs2,
         defaults: parseDefaults(void 0, options.defaults),
         managedRoot
@@ -7806,7 +7754,7 @@ async function loadConfiguration(options) {
   const catalogs = await includeManagedCatalog([], managedRoot);
   return {
     configuration: {
-      version: 1,
+      version: 2,
       catalogs,
       defaults: parseDefaults(void 0, options.defaults),
       managedRoot
@@ -7844,10 +7792,7 @@ async function includeManagedCatalog(catalogs, managedRoot) {
     }
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-    if (code === "ENOENT") {
-      return catalogs;
-    }
-    throw error;
+    if (code !== "ENOENT") throw error;
   }
   return [
     ...catalogs,
@@ -7900,22 +7845,26 @@ function validateUniqueCatalogIds(catalogs) {
 // src/internal/catalog-index.ts
 var import_yaml2 = __toESM(require_dist(), 1);
 import {
-  mkdir,
-  open,
   readFile as readFile2,
   readdir,
   realpath as realpath2,
-  rename,
-  stat as stat2,
-  unlink,
-  writeFile
+  stat as stat2
 } from "node:fs/promises";
 import path3 from "node:path";
 var DEFAULT_IGNORE = /* @__PURE__ */ new Set([".git", "node_modules", "dist"]);
 var MAX_SKILL_BYTES = 1048576;
 var MAX_SIDECAR_BYTES = 262144;
 var NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
-var INDEX_FILE_NAME = `index-v${INDEX_SCHEMA_VERSION}.json`;
+function registrationFingerprint(catalog) {
+  return sha256(JSON.stringify({
+    root: pathIdentity(catalog.root),
+    trust: catalog.trust ?? null,
+    compatibility: catalog.compatibility ? [...catalog.compatibility].sort() : null,
+    followSymlinks: catalog.followSymlinks ?? false,
+    maxDepth: catalog.maxDepth ?? null,
+    ignore: [...catalog.ignore ?? []].sort()
+  }));
+}
 function asObject2(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
@@ -7960,7 +7909,6 @@ function parseSidecar(source, catalog) {
   if (input.schemaVersion !== void 0 && input.schemaVersion !== 1) {
     throw new Error("stash.meta.yaml must use schemaVersion: 1.");
   }
-  const examples = asObject2(input.examples);
   const compatibility = asObject2(input.compatibility);
   const defaults = compatibilityDefaults(catalog.compatibility);
   const sourceInfo = asObject2(input.source);
@@ -7973,16 +7921,11 @@ function parseSidecar(source, catalog) {
       "source.id must use 1-64 lowercase letters, digits, or hyphens."
     );
   }
-  const sourceDisplayName = typeof sourceInfo.displayName === "string" ? sourceInfo.displayName.trim() : void 0;
-  if (sourceDisplayName && sourceDisplayName.length > 128) {
+  const sourceDisplayName2 = typeof sourceInfo.displayName === "string" ? sourceInfo.displayName.trim() : void 0;
+  if (sourceDisplayName2 && sourceDisplayName2.length > 128) {
     throw new Error("source.displayName must be at most 128 characters.");
   }
   return {
-    aliases: stringArray(input.aliases),
-    tags: stringArray(input.tags),
-    intents: stringArray(input.intents),
-    positiveExamples: stringArray(examples.positive),
-    negativeExamples: stringArray(examples.negative),
     compatibility: {
       codex: compatibilityState(compatibility.codex, defaults.codex),
       "claude-code": compatibilityState(
@@ -7997,7 +7940,7 @@ function parseSidecar(source, catalog) {
     ...parsedTrust ? { trust: parsedTrust } : {},
     source: {
       ...sourceId ? { id: sourceId } : {},
-      ...sourceDisplayName ? { displayName: sourceDisplayName } : {},
+      ...sourceDisplayName2 ? { displayName: sourceDisplayName2 } : {},
       ...typeof sourceInfo.url === "string" ? { url: sourceInfo.url } : {},
       ...typeof sourceInfo.revision === "string" ? { revision: sourceInfo.revision } : {},
       ...typeof sourceInfo.license === "string" ? { license: sourceInfo.license } : {}
@@ -8196,7 +8139,9 @@ async function discoverCandidates(catalog) {
     root,
     candidates,
     warnings,
-    fingerprint: sha256(`${fingerprintPart}
+    fingerprint: sha256(`${registrationFingerprint(catalog)}
+${pathIdentity(root)}
+${fingerprintPart}
 ${fingerprintSource}`),
     effectiveCatalog
   };
@@ -8235,11 +8180,6 @@ async function buildRecord(root, candidate, catalog, warnings) {
       name: metadata.name,
       description: metadata.description.replace(/\s+/gu, " ").trim(),
       relativeSkillFile,
-      aliases: sidecar.aliases,
-      tags: sidecar.tags,
-      intents: sidecar.intents,
-      positiveExamples: sidecar.positiveExamples,
-      negativeExamples: sidecar.negativeExamples,
       compatibility: sidecar.compatibility,
       trust: sidecar.trust ?? catalog.trust ?? "unreviewed",
       source: {
@@ -8262,7 +8202,25 @@ async function buildRecord(root, candidate, catalog, warnings) {
   }
 }
 async function scanCatalog(catalog, now = Date.now) {
-  const discovered = await discoverCandidates(catalog);
+  if (catalog.id === "managed") {
+    try {
+      await stat2(catalog.root);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      return { skipped: 0, index: {
+        schemaVersion: INDEX_SCHEMA_VERSION,
+        catalogId: catalog.id,
+        root: catalog.root,
+        generatedAt: new Date(now()).toISOString(),
+        fingerprint: sha256("empty"),
+        records: [],
+        warnings: []
+      } };
+    }
+  }
+  return buildIndex(catalog, await discoverCandidates(catalog), now);
+}
+async function buildIndex(catalog, discovered, now) {
   const warnings = [...discovered.warnings];
   const records = [];
   let skipped = 0;
@@ -8291,12 +8249,13 @@ async function scanCatalog(catalog, now = Date.now) {
     }
     seenRefs.add(record.ref);
   }
+  const timestamp = new Date(now()).toISOString();
   return {
     index: {
       schemaVersion: INDEX_SCHEMA_VERSION,
       catalogId: catalog.id,
       root: discovered.root,
-      generatedAt: new Date(now()).toISOString(),
+      generatedAt: timestamp,
       fingerprint: discovered.fingerprint,
       records,
       warnings
@@ -8304,105 +8263,276 @@ async function scanCatalog(catalog, now = Date.now) {
     skipped
   };
 }
-async function loadCatalogIndex(catalog, cacheDir, cacheTtlMs, now) {
-  const catalogCacheDir = path3.join(cacheDir, safeCatalogSegment(catalog.id));
-  const indexPath = path3.join(catalogCacheDir, INDEX_FILE_NAME);
-  let cached;
-  try {
-    const source = await readFile2(indexPath, "utf8");
-    const parsed = JSON.parse(source);
-    if (parsed.schemaVersion === INDEX_SCHEMA_VERSION && parsed.catalogId === catalog.id && Array.isArray(parsed.records) && parsed.records.every(
-      (record) => record !== null && typeof record === "object" && record.source !== null && typeof record.source === "object"
-    )) {
-      cached = parsed;
-      const age = now() - Date.parse(parsed.generatedAt);
-      if (cacheTtlMs > 0 && Number.isFinite(age) && age >= 0 && age <= cacheTtlMs) {
-        return { index: parsed, refreshed: false };
-      }
-    }
-  } catch {
-    cached = void 0;
-  }
-  const discovered = await discoverCandidates(catalog);
-  if (cached && cached.fingerprint === discovered.fingerprint) {
-    return { index: cached, refreshed: false };
-  }
-  return {
-    index: await writeFreshIndex(catalog, cacheDir, now),
-    refreshed: true
-  };
+
+// src/internal/catalog-snapshot.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+import { lstat as lstat5, mkdir, readFile as readFile6, rename as rename2, writeFile as writeFile2 } from "node:fs/promises";
+import path8 from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+
+// src/internal/classification.ts
+import { randomUUID } from "node:crypto";
+import { lstat as lstat2, readFile as readFile3, rename, writeFile } from "node:fs/promises";
+import path5 from "node:path";
+
+// src/internal/recycle-bin.ts
+import childProcess from "node:child_process";
+import { lstat } from "node:fs/promises";
+import path4 from "node:path";
+var WINDOWS_RECYCLE = String.raw`
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+[ComImport, Guid("947AAB5F-0A5C-4C13-B4D6-4BF7836FC9F8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IStashFileOperation {
+  void Advise(IntPtr sink, out uint cookie);
+  void Unadvise(uint cookie);
+  void SetOperationFlags(uint flags);
+  void SetProgressMessage([MarshalAs(UnmanagedType.LPWStr)] string message);
+  void SetProgressDialog(IntPtr dialog);
+  void SetProperties(IntPtr properties);
+  void SetOwnerWindow(uint owner);
+  void ApplyPropertiesToItem(IntPtr item);
+  void ApplyPropertiesToItems(IntPtr items);
+  void RenameItem(IntPtr item, [MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr sink);
+  void RenameItems(IntPtr items, [MarshalAs(UnmanagedType.LPWStr)] string name);
+  void MoveItem(IntPtr item, IntPtr destination, [MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr sink);
+  void MoveItems(IntPtr items, IntPtr destination);
+  void CopyItem(IntPtr item, IntPtr destination, [MarshalAs(UnmanagedType.LPWStr)] string name, IntPtr sink);
+  void CopyItems(IntPtr items, IntPtr destination);
+  void DeleteItem(IntPtr item, IStashProgressSink sink);
+  void DeleteItems(IntPtr items);
+  void NewItem(IntPtr destination, uint attributes, [MarshalAs(UnmanagedType.LPWStr)] string name,
+    [MarshalAs(UnmanagedType.LPWStr)] string template, IntPtr sink);
+  void PerformOperations();
+  void GetAnyOperationsAborted([MarshalAs(UnmanagedType.Bool)] out bool aborted);
 }
-async function writeFreshIndex(catalog, cacheDir, now = Date.now) {
-  const catalogCacheDir = path3.join(cacheDir, safeCatalogSegment(catalog.id));
-  await mkdir(catalogCacheDir, { recursive: true });
-  const lockPath = path3.join(catalogCacheDir, "index.lock");
-  const lock = await acquireLock(lockPath);
-  try {
-    const { index } = await scanCatalog(catalog, now);
-    const indexPath = path3.join(catalogCacheDir, INDEX_FILE_NAME);
-    const temporaryPath = path3.join(
-      catalogCacheDir,
-      `index-v${INDEX_SCHEMA_VERSION}.${process.pid}.${Date.now()}.tmp`
-    );
-    const serialized = `${JSON.stringify(index, null, 2)}
-`;
-    await writeFile(temporaryPath, serialized, { encoding: "utf8", flag: "wx" });
-    await rename(temporaryPath, indexPath);
-    return index;
-  } finally {
-    await lock.close();
-    await unlink(lockPath).catch(() => void 0);
-  }
+
+[ComVisible(true), Guid("04B0F1A7-9490-44BC-96E1-4296A31252E2"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IStashProgressSink {
+  [PreserveSig] int StartOperations();
+  [PreserveSig] int FinishOperations(int result);
+  [PreserveSig] int PreRenameItem(uint flags, IntPtr item, IntPtr name);
+  [PreserveSig] int PostRenameItem(uint flags, IntPtr item, IntPtr name, int result, IntPtr created);
+  [PreserveSig] int PreMoveItem(uint flags, IntPtr item, IntPtr destination, IntPtr name);
+  [PreserveSig] int PostMoveItem(uint flags, IntPtr item, IntPtr destination, IntPtr name, int result, IntPtr created);
+  [PreserveSig] int PreCopyItem(uint flags, IntPtr item, IntPtr destination, IntPtr name);
+  [PreserveSig] int PostCopyItem(uint flags, IntPtr item, IntPtr destination, IntPtr name, int result, IntPtr created);
+  [PreserveSig] int PreDeleteItem(uint flags, IntPtr item);
+  [PreserveSig] int PostDeleteItem(uint flags, IntPtr item, int result, IntPtr created);
+  [PreserveSig] int PreNewItem(uint flags, IntPtr destination, IntPtr name);
+  [PreserveSig] int PostNewItem(uint flags, IntPtr destination, IntPtr name, IntPtr template, uint attributes, int result, IntPtr created);
+  [PreserveSig] int UpdateProgress(uint total, uint complete);
+  [PreserveSig] int ResetTimer();
+  [PreserveSig] int PauseTimer();
+  [PreserveSig] int ResumeTimer();
 }
-async function acquireLock(lockPath) {
-  const timeoutAt = Date.now() + 5e3;
-  for (; ; ) {
+
+[ComVisible(true), ClassInterface(ClassInterfaceType.None)]
+public class StashProgressSink : IStashProgressSink {
+  public int Result = 0;
+  public bool Recycled = false;
+  public int StartOperations() => 0;
+  public int FinishOperations(int result) { if (result < 0) Result = result; return 0; }
+  public int PreRenameItem(uint f, IntPtr i, IntPtr n) => 0;
+  public int PostRenameItem(uint f, IntPtr i, IntPtr n, int r, IntPtr c) => 0;
+  public int PreMoveItem(uint f, IntPtr i, IntPtr d, IntPtr n) => 0;
+  public int PostMoveItem(uint f, IntPtr i, IntPtr d, IntPtr n, int r, IntPtr c) => 0;
+  public int PreCopyItem(uint f, IntPtr i, IntPtr d, IntPtr n) => 0;
+  public int PostCopyItem(uint f, IntPtr i, IntPtr d, IntPtr n, int r, IntPtr c) => 0;
+  public int PreDeleteItem(uint flags, IntPtr item) {
+    return (flags & 0x80) != 0 ? 0 : unchecked((int)0x80004004);
+  }
+  public int PostDeleteItem(uint flags, IntPtr item, int result, IntPtr created) {
+    Result = result;
+    Recycled = result >= 0 && (flags & 0x80) != 0 && created != IntPtr.Zero;
+    return 0;
+  }
+  public int PreNewItem(uint f, IntPtr d, IntPtr n) => 0;
+  public int PostNewItem(uint f, IntPtr d, IntPtr n, IntPtr t, uint a, int r, IntPtr c) => 0;
+  public int UpdateProgress(uint total, uint complete) => 0;
+  public int ResetTimer() => 0;
+  public int PauseTimer() => 0;
+  public int ResumeTimer() => 0;
+}
+
+public static class StashRecycle {
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHCreateItemFromParsingName(string path, IntPtr context, ref Guid iid, out IntPtr item);
+  public static void Send(string path) {
+    var iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
+    IntPtr item = IntPtr.Zero;
+    var operation = (IStashFileOperation)Activator.CreateInstance(
+      Type.GetTypeFromCLSID(new Guid("3AD05575-8857-4850-9277-11B85BDB8E09")));
     try {
-      return await open(lockPath, "wx");
-    } catch (error) {
-      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
-      if (code !== "EEXIST") {
-        throw error;
-      }
-      try {
-        const lockInfo = await stat2(lockPath);
-        if (Date.now() - lockInfo.mtimeMs > 3e4) {
-          await unlink(lockPath);
-          continue;
-        }
-      } catch {
-        continue;
-      }
-      if (Date.now() >= timeoutAt) {
-        throw new StashError(
-          "index-locked",
-          `Timed out waiting for index lock "${lockPath}".`,
-          4
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out item);
+      var sink = new StashProgressSink();
+      // RECYCLEONDELETE | EARLYFAILURE | NOERRORUI | SILENT | NOCONFIRMATION.
+      operation.SetOperationFlags(0x00080000 | 0x00100000 | 0x400 | 0x4 | 0x10);
+      operation.DeleteItem(item, sink);
+      operation.PerformOperations();
+      bool aborted;
+      operation.GetAnyOperationsAborted(out aborted);
+      Marshal.ThrowExceptionForHR(sink.Result);
+      if (aborted || !sink.Recycled) throw new InvalidOperationException("Recycling was not completed.");
+    } finally {
+      if (item != IntPtr.Zero) Marshal.Release(item);
+      Marshal.FinalReleaseComObject(operation);
     }
   }
+}
+'@
+[StashRecycle]::Send($env:STASH_RECYCLE_TARGET)
+`;
+var MAC_RECYCLE = `
+ObjC.import('Foundation');
+function run(argv) {
+  var error = Ref();
+  var url = $.NSURL.fileURLWithPath(argv[0]);
+  if (!$.NSFileManager.defaultManager.trashItemAtURLResultingItemURLError(url, null, error))
+    throw new Error(ObjC.unwrap(error[0].localizedDescription));
+}
+`;
+async function recyclePath(target) {
+  if (!path4.isAbsolute(target) || path4.resolve(target) === path4.parse(path4.resolve(target)).root) {
+    throw new StashError("unsafe-recycle-path", `Refusing to recycle root or relative path "${target}".`, 3);
+  }
+  try {
+    await lstat(target);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  try {
+    const exec = (file, args, options2) => new Promise((resolve, reject) => {
+      childProcess.execFile(file, args, options2, (error, _stdout, stderr) => {
+        if (!error) return resolve();
+        const detail = String(stderr || error.message.split(/\r?\n/, 1)[0]).trim();
+        reject(new Error(`${file}: ${detail.slice(0, 1e3)}`));
+      });
+    });
+    const options = { windowsHide: true, timeout: 6e4, maxBuffer: 256 * 1024 };
+    if (process.platform === "win32") {
+      await exec("pwsh.exe", ["-NoProfile", "-NonInteractive", "-STA", "-Command", WINDOWS_RECYCLE], {
+        ...options,
+        env: { ...process.env, STASH_RECYCLE_TARGET: target }
+      });
+    } else if (process.platform === "darwin") {
+      await exec("/usr/bin/osascript", ["-l", "JavaScript", "-e", MAC_RECYCLE, target], options);
+    } else if (process.platform === "linux") {
+      await exec("gio", ["trash", "--", target], options);
+    } else {
+      throw new Error(`No OS trash adapter for ${process.platform}.`);
+    }
+    try {
+      await lstat(target);
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    throw new Error("The path remains after the trash operation.");
+  } catch (error) {
+    throw new StashError("recycle-failed", `Unable to recycle "${target}"; no permanent-delete fallback: ${String(error)}`, 4);
+  }
+}
+
+// src/internal/classification.ts
+function classificationPath(root) {
+  return path5.join(root, ".stash", "catalog.json");
+}
+function validateClassification(value) {
+  if (!value || !/^sha256:[a-f0-9]{64}$/u.test(value.contentHash) || typeof value.group !== "string" || !/^[a-z0-9]+(?:[-/][a-z0-9]+)*$/u.test(value.group) || value.group.length > 80 || typeof value.purpose !== "string" || !value.purpose.trim() || value.purpose.length > 240 || /[\r\n\t]/u.test(value.purpose)) {
+    throw new StashError("invalid-classification", "Classification requires a content hash, category slug and one-line purpose (1\u2013240 characters).", 2);
+  }
+  if (value.source !== void 0) {
+    if (!value.source || typeof value.source !== "object" || Object.entries(value.source).some(([key, item]) => !["id", "displayName", "url"].includes(key) || typeof item !== "string" || !item.trim() || item.length > 2048)) {
+      throw new StashError("invalid-classification", "Source attribution accepts only id, displayName and url.", 2);
+    }
+    if (value.source.url) {
+      let url;
+      try {
+        url = new URL(value.source.url);
+      } catch {
+        throw new StashError("invalid-classification", "Invalid source URL.", 2);
+      }
+      if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) {
+        throw new StashError("invalid-classification", "Source URL must be HTTP(S) without credentials.", 2);
+      }
+    }
+  }
+}
+async function readClassifications(root) {
+  if (!root) return { version: 1, skills: {} };
+  try {
+    const parent = await lstat2(path5.join(root, ".stash"));
+    const file = classificationPath(root);
+    const info = await lstat2(file);
+    if (!parent.isDirectory() || parent.isSymbolicLink() || !info.isFile() || info.isSymbolicLink() || info.size > 16777216) {
+      throw new Error("Classification metadata must be a regular local file (at most 16 MiB).");
+    }
+    const data = JSON.parse(await readFile3(file, "utf8"));
+    if (data.version !== 1 || !data.skills || typeof data.skills !== "object" || Array.isArray(data.skills)) throw new Error("Invalid classification file.");
+    for (const [ref, entry] of Object.entries(data.skills)) {
+      if (!/^[a-z0-9][a-z0-9._-]*:.+$/u.test(ref)) throw new Error("Invalid classification ref.");
+      validateClassification(entry);
+    }
+    return data;
+  } catch (error) {
+    if (error.code === "ENOENT") return { version: 1, skills: {} };
+    throw new StashError("invalid-classification", `Cannot read classification metadata: ${String(error)}`, 5);
+  }
+}
+async function writeClassifications(root, data) {
+  const file = classificationPath(root);
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(data, null, 2)}
+`, { encoding: "utf8", flag: "wx" });
+  try {
+    await rename(temporary, file);
+  } catch (error) {
+    await recyclePath(temporary).catch(() => void 0);
+    throw error;
+  }
+}
+function classifyIndexes(indexes, data) {
+  const warnings = [];
+  return {
+    indexes: indexes.map((index) => ({ ...index, records: index.records.map((record) => {
+      const entry = data.skills[record.ref];
+      if (!entry) return record;
+      if (entry.contentHash !== record.contentHash) {
+        warnings.push({ code: "classification-stale", ref: record.ref, message: "SKILL.md changed; review its category and purpose with classify." });
+        return record;
+      }
+      if (entry.source && Object.entries(entry.source).some(([key, value]) => record.source[key] && record.source[key] !== value)) {
+        warnings.push({ code: "classification-source-conflict", ref: record.ref, message: "Preserved recorded source over conflicting local attribution." });
+      }
+      return { ...record, group: entry.group, purpose: entry.purpose, source: { ...entry.source, ...record.source } };
+    }) })),
+    warnings
+  };
 }
 
 // src/internal/managed-projection.ts
 import {
-  lstat as lstat2,
-  readFile as readFile4,
+  lstat as lstat4,
+  readFile as readFile5,
   readdir as readdir3,
   realpath as realpath4
 } from "node:fs/promises";
-import path5 from "node:path";
+import path7 from "node:path";
 
 // src/internal/tree-fingerprint.ts
 import {
-  lstat,
-  readFile as readFile3,
+  lstat as lstat3,
+  readFile as readFile4,
   readdir as readdir2,
   realpath as realpath3,
   stat as stat3
 } from "node:fs/promises";
-import path4 from "node:path";
+import path6 from "node:path";
 var MAX_FILES = 1e4;
 var MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 var WINDOWS_RESERVED_NAMES = /* @__PURE__ */ new Set([
@@ -8468,10 +8598,10 @@ function portablePathKey(relativePath) {
   return relativePath.normalize("NFKC").toLocaleLowerCase("und");
 }
 async function fingerprintTree(sourceRoot, capturePaths = /* @__PURE__ */ new Set()) {
-  const rootInput = path4.resolve(sourceRoot);
+  const rootInput = path6.resolve(sourceRoot);
   let rootInfo;
   try {
-    rootInfo = await lstat(rootInput);
+    rootInfo = await lstat3(rootInput);
   } catch (error) {
     throw new TreeFingerprintError(
       "root-unavailable",
@@ -8510,8 +8640,8 @@ async function fingerprintTree(sourceRoot, capturePaths = /* @__PURE__ */ new Se
         );
       }
       pathKeys.add(key);
-      const childPath = path4.join(directory, child.name);
-      const before = await lstat(childPath);
+      const childPath = path6.join(directory, child.name);
+      const before = await lstat3(childPath);
       if (before.isSymbolicLink()) {
         throw new TreeFingerprintError(
           "linked-tree",
@@ -8548,7 +8678,7 @@ async function fingerprintTree(sourceRoot, capturePaths = /* @__PURE__ */ new Se
           relativePath
         );
       }
-      const content = await readFile3(childPath);
+      const content = await readFile4(childPath);
       const after = await stat3(childPath);
       if (after.size !== before.size || after.mtimeMs !== before.mtimeMs) {
         throw new TreeFingerprintError(
@@ -8658,8 +8788,8 @@ function validStoredRemoteProvenance(source) {
   if (!values.every((value) => typeof value === "string")) {
     return false;
   }
-  const [url, revision, repositoryPath, trackingRef] = values;
-  return canonicalLifecycleSourceUrl(url) === url && canonicalImmutableRevision(revision) === revision && canonicalRepositoryPath(repositoryPath) === repositoryPath && canonicalTrackingRef(trackingRef) === trackingRef;
+  const [url, revision2, repositoryPath, trackingRef] = values;
+  return canonicalLifecycleSourceUrl(url) === url && canonicalImmutableRevision(revision2) === revision2 && canonicalRepositoryPath(repositoryPath) === repositoryPath && canonicalTrackingRef(trackingRef) === trackingRef;
 }
 
 // src/internal/managed-projection.ts
@@ -8668,8 +8798,8 @@ function validRecord(value, expectedName) {
     return false;
   }
   const record = value;
-  return record.schemaVersion === 1 && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === expectedName && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) && /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) && record.source !== null && typeof record.source === "object" && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path5.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
-    (deployment) => deployment !== null && typeof deployment === "object" && typeof deployment.deploymentId === "string" && deployment.deploymentId.length > 0 && deployment.skillId === record.skillId && (deployment.host === "codex" || deployment.host === "claude-code" || deployment.host === "antigravity-ide") && (deployment.scope === "user" || deployment.scope === "workspace") && deployment.method === "copy" && deployment.ownership === "stash" && typeof deployment.root === "string" && path5.isAbsolute(deployment.root) && typeof deployment.path === "string" && path5.isAbsolute(deployment.path) && pathIdentity(deployment.path) === pathIdentity(path5.join(deployment.root, record.name)) && deployment.targetId === `${deployment.host}:${deployment.scope}:${pathIdentity(deployment.root)}` && /^sha256:[0-9a-f]{64}$/u.test(deployment.treeHash) && typeof deployment.deployedAt === "string"
+  return record.schemaVersion === 1 && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === expectedName && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(record.name) && /^sha256:[0-9a-f]{64}$/u.test(record.treeHash) && record.source !== null && typeof record.source === "object" && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path7.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
+    (deployment) => deployment !== null && typeof deployment === "object" && typeof deployment.deploymentId === "string" && deployment.deploymentId.length > 0 && deployment.skillId === record.skillId && (deployment.host === "codex" || deployment.host === "claude-code" || deployment.host === "antigravity-ide") && (deployment.scope === "user" || deployment.scope === "workspace") && deployment.method === "copy" && deployment.ownership === "stash" && typeof deployment.root === "string" && path7.isAbsolute(deployment.root) && typeof deployment.path === "string" && path7.isAbsolute(deployment.path) && pathIdentity(deployment.path) === pathIdentity(path7.join(deployment.root, record.name)) && deployment.targetId === `${deployment.host}:${deployment.scope}:${pathIdentity(deployment.root)}` && /^sha256:[0-9a-f]{64}$/u.test(deployment.treeHash) && typeof deployment.deployedAt === "string"
   );
 }
 async function treeHash(rootInput) {
@@ -8712,15 +8842,15 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
     return { indexes, fingerprintPart: "" };
   }
   let recordFiles;
-  const metadataRoot = path5.join(managedRoot, ".stash");
-  const recordsRoot = path5.join(metadataRoot, "records");
+  const metadataRoot = path7.join(managedRoot, ".stash");
+  const recordsRoot = path7.join(metadataRoot, "records");
   try {
-    const managedInfo = await lstat2(managedRoot);
-    const metadataInfo = await lstat2(metadataRoot);
+    const managedInfo = await lstat4(managedRoot);
+    const metadataInfo = await lstat4(metadataRoot);
     if (managedInfo.isSymbolicLink() || !managedInfo.isDirectory() || metadataInfo.isSymbolicLink() || !metadataInfo.isDirectory() || !isPathInside(await realpath4(managedRoot), await realpath4(metadataRoot))) {
       throw new Error("unsafe managed metadata root");
     }
-    const recordsInfo = await lstat2(recordsRoot);
+    const recordsInfo = await lstat4(recordsRoot);
     if (recordsInfo.isSymbolicLink() || !recordsInfo.isDirectory() || !isPathInside(await realpath4(managedRoot), await realpath4(recordsRoot))) {
       throw new Error("unsafe managed records root");
     }
@@ -8741,13 +8871,13 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
   const managedRecords = /* @__PURE__ */ new Map();
   for (const file of recordFiles) {
     try {
-      const recordPath = path5.join(recordsRoot, file);
-      const recordInfo = await lstat2(recordPath);
+      const recordPath = path7.join(recordsRoot, file);
+      const recordInfo = await lstat4(recordPath);
       if (recordInfo.isSymbolicLink() || !recordInfo.isFile()) {
         throw new Error("record is not a real file");
       }
       const parsed = JSON.parse(
-        await readFile4(recordPath, "utf8")
+        await readFile5(recordPath, "utf8")
       );
       const expectedName = file.slice(0, -".json".length);
       if (!validRecord(parsed, expectedName)) {
@@ -8787,10 +8917,12 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
       record.source = {
         ...record.source,
         ...managedRecord.source.url ? { url: managedRecord.source.url } : {},
-        ...managedRecord.source.revision ? { revision: managedRecord.source.revision } : {}
+        ...managedRecord.source.revision ? { revision: managedRecord.source.revision } : {},
+        ...managedRecord.source.repositoryPath ? { repositoryPath: managedRecord.source.repositoryPath } : {},
+        ...managedRecord.source.trackingRef ? { trackingRef: managedRecord.source.trackingRef } : {}
       };
       events.push(
-        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}`
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}:${record.group ?? ""}`
       );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }
@@ -8801,8 +8933,8 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
     }
     const visible = [];
     for (const record of index.records) {
-      const skillRoot = path5.dirname(
-        path5.resolve(index.root, record.relativeSkillFile)
+      const skillRoot = path7.dirname(
+        path7.resolve(index.root, record.relativeSkillFile)
       );
       const target = targets.get(pathIdentity(skillRoot));
       const canonical = target ? canonicalBySkillId.get(target.record.skillId) : void 0;
@@ -8846,342 +8978,108 @@ async function projectManagedCopies(sourceIndexes, managedRoot) {
   };
 }
 
-// src/internal/search.ts
-var ROUTING_PROFILE_VERSION = 6;
-var FIELD_WEIGHTS = {
-  name: 6,
-  alias: 6,
-  intent: 3,
-  tag: 3,
-  example: 2,
-  description: 1.5,
-  source: 6,
-  group: 0.5
-};
-function fieldsFor(record) {
-  return [
-    { kind: "name", weight: FIELD_WEIGHTS.name, values: [record.name] },
-    { kind: "alias", weight: FIELD_WEIGHTS.alias, values: record.aliases },
-    { kind: "intent", weight: FIELD_WEIGHTS.intent, values: record.intents },
-    { kind: "tag", weight: FIELD_WEIGHTS.tag, values: record.tags },
-    {
-      kind: "example",
-      weight: FIELD_WEIGHTS.example,
-      values: record.positiveExamples
-    },
-    {
-      kind: "description",
-      weight: FIELD_WEIGHTS.description,
-      values: [record.description]
-    },
-    {
-      kind: "source",
-      weight: FIELD_WEIGHTS.source,
-      values: record.source.id ? [record.source.id] : []
-    },
-    {
-      kind: "group",
-      weight: FIELD_WEIGHTS.group,
-      values: record.group ? [record.group] : []
+// src/internal/catalog-snapshot.ts
+async function revision(root) {
+  if (!root) return "";
+  const metadata = path8.join(root, ".stash");
+  try {
+    await lstat5(path8.join(metadata, "lifecycle.lock"));
+    throw new StashError("lifecycle-busy", "The managed store is being changed. Retry when the operation finishes.", 4);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  try {
+    const parent = await lstat5(metadata);
+    const file = path8.join(metadata, "revision");
+    const info = await lstat5(file);
+    if (!parent.isDirectory() || parent.isSymbolicLink() || !info.isFile() || info.isSymbolicLink() || info.size > 1024) {
+      throw new StashError("unsafe-managed-layout", "Snapshot revision must be a regular file in the managed metadata directory.", 3);
     }
-  ];
+    return await readFile6(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  }
 }
-function tokenFrequency(values) {
-  const result = /* @__PURE__ */ new Map();
-  for (const value of values) {
-    for (const token of tokenize(value)) {
-      result.set(token, (result.get(token) ?? 0) + 1);
+function validRecord2(record) {
+  const source = record?.source;
+  return !!record && typeof record.ref === "string" && typeof record.catalogId === "string" && typeof record.name === "string" && typeof record.description === "string" && (record.group === void 0 || typeof record.group === "string") && (record.purpose === void 0 || typeof record.purpose === "string") && typeof record.contentHash === "string" && !!source && typeof source === "object" && !Array.isArray(source) && (source.id === void 0 || typeof source.id === "string") && (source.displayName === void 0 || typeof source.displayName === "string") && (source.url === void 0 || typeof source.url === "string");
+}
+async function loadSnapshot(configuration, cacheDir, now, force = false) {
+  const before = await revision(configuration.managedRoot);
+  const key = sha256(JSON.stringify({ catalogs: configuration.catalogs, managedRoot: configuration.managedRoot, revision: before }));
+  const file = path8.join(cacheDir, "catalog.json");
+  if (!force) {
+    try {
+      const cached = JSON.parse(await readFile6(file, "utf8"));
+      if (cached.version === INDEX_SCHEMA_VERSION && cached.key === key && Array.isArray(cached.indexes) && Array.isArray(cached.copies) && Array.isArray(cached.warnings) && typeof cached.fingerprint === "string" && Array.isArray(cached.failures) && cached.failures.every((failure) => failure && typeof failure.catalogId === "string" && typeof failure.message === "string") && cached.copies.every(validRecord2) && cached.indexes.every((index) => Array.isArray(index.records) && Array.isArray(index.warnings) && index.records.every(validRecord2))) return cached;
+    } catch {
     }
+  }
+  const indexes = [];
+  const failures = [];
+  for (const catalog of configuration.catalogs.filter((c) => c.enabled !== false)) {
+    try {
+      indexes.push((await scanCatalog(catalog, now)).index);
+    } catch (error) {
+      failures.push({ catalogId: catalog.id, message: `Catalog "${catalog.id}" could not be scanned: ${String(error)}` });
+    }
+  }
+  const projected = await projectManagedCopies(indexes, configuration.managedRoot);
+  const metadata = await readClassifications(configuration.managedRoot);
+  const classified = classifyIndexes(projected.indexes, metadata);
+  const visible = new Set(projected.indexes.flatMap((index) => index.records.map((record) => record.ref)));
+  const copies = classifyIndexes(indexes.map((index) => ({ ...index, records: index.records.filter((record) => !visible.has(record.ref)) })), metadata).indexes.flatMap((index) => index.records);
+  if (before !== await revision(configuration.managedRoot)) {
+    throw new StashError("catalog-changed", "Catalog changed during indexing. Retry the request.", 4);
+  }
+  const result = {
+    version: INDEX_SCHEMA_VERSION,
+    key,
+    fingerprint: sha256(JSON.stringify({ indexes: classified.indexes.map((index) => ({ catalogId: index.catalogId, records: index.records, warnings: index.warnings })), copies, warnings: classified.warnings, failures })),
+    generatedAt: new Date(now()).toISOString(),
+    indexes: classified.indexes,
+    copies,
+    warnings: classified.warnings,
+    failures
+  };
+  await mkdir(cacheDir, { recursive: true });
+  const temporary = `${file}.${randomUUID2()}.tmp`;
+  await writeFile2(temporary, JSON.stringify(result), { encoding: "utf8", flag: "wx" });
+  try {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rename2(temporary, file);
+        break;
+      } catch (error) {
+        if (process.platform !== "win32" || error.code !== "EPERM" || attempt === 4) throw error;
+        await delay(20 * (attempt + 1));
+      }
+    }
+  } catch (error) {
+    await recyclePath(temporary).catch(() => void 0);
+    throw error;
   }
   return result;
 }
-function prepareRecord(record) {
-  const preparedFields = fieldsFor(record).map((field) => {
-    const frequencies = tokenFrequency(field.values);
-    return {
-      kind: field.kind,
-      weight: field.weight,
-      frequencies,
-      length: Math.max(
-        1,
-        field.values.reduce((sum, value) => sum + tokenize(value).length, 0)
-      )
-    };
-  });
-  return {
-    record,
-    fields: preparedFields,
-    allTokens: new Set(
-      preparedFields.flatMap((field) => [...field.frequencies.keys()])
-    )
-  };
-}
-function documentFrequencies(records, queryTerms) {
-  const result = new Map(queryTerms.map((term) => [term, 0]));
-  for (const record of records) {
-    for (const term of queryTerms) {
-      if (record.allTokens.has(term)) {
-        result.set(term, (result.get(term) ?? 0) + 1);
-      }
-    }
-  }
-  return result;
-}
-function idf(totalDocuments, documentFrequencyValue) {
-  return Math.log(
-    1 + (totalDocuments - documentFrequencyValue + 0.5) / (documentFrequencyValue + 0.5)
-  );
-}
-function negativePenalty(record, queryTerms) {
-  if (record.negativeExamples.length === 0) {
-    return 1;
-  }
-  const negativeTerms = new Set(record.negativeExamples.flatMap(tokenize));
-  const hits = queryTerms.filter((term) => negativeTerms.has(term)).length;
-  if (hits === 0) {
-    return 1;
-  }
-  return Math.max(0.25, 1 - hits / Math.max(2, queryTerms.length));
-}
-function scoreRecord(prepared, totalRecords, frequenciesByDocument, queryTerms) {
-  let score = 0;
-  const matchedTerms = /* @__PURE__ */ new Set();
-  const matchedKinds = /* @__PURE__ */ new Set();
-  const descriptionMatchedTerms = /* @__PURE__ */ new Set();
-  const reasons = [];
-  const seenReason = /* @__PURE__ */ new Set();
-  for (const field of prepared.fields) {
-    for (const term of queryTerms) {
-      const frequency = field.frequencies.get(term) ?? 0;
-      if (frequency === 0) {
-        continue;
-      }
-      const termIdf = idf(
-        totalRecords,
-        frequenciesByDocument.get(term) ?? 0
-      );
-      const normalizedTf = frequency / (0.25 + 0.75 * field.length);
-      const weightedTf = normalizedTf * field.weight;
-      score += termIdf * (weightedTf * 2.2 / (weightedTf + 1.2));
-      matchedTerms.add(term);
-      matchedKinds.add(field.kind);
-      if (field.kind === "description") {
-        descriptionMatchedTerms.add(term);
-      }
-      if (field.kind !== "group") {
-        const reasonKey = `${field.kind}:${term}`;
-        if (!seenReason.has(reasonKey)) {
-          reasons.push({ kind: field.kind, value: term });
-          seenReason.add(reasonKey);
-        }
-      }
-    }
-  }
-  score *= negativePenalty(prepared.record, queryTerms);
-  return {
-    score,
-    matchedTerms,
-    matchedKinds,
-    descriptionMatchedTerms,
-    reasons
-  };
-}
-function normalizedTerms(value) {
-  const normalized = normalizeText(value);
-  return normalized ? normalized.split(/\s+/u) : [];
-}
-function containsTermSequence(haystack, needle) {
-  if (needle.length === 0 || needle.length > haystack.length) {
-    return false;
-  }
-  return haystack.some(
-    (_, start) => start + needle.length <= haystack.length && needle.every((term, offset) => haystack[start + offset] === term)
-  );
-}
-function hasTermBoundaryMatch(left, right) {
-  const leftTerms = normalizedTerms(left);
-  const rightTerms = normalizedTerms(right);
-  return containsTermSequence(leftTerms, rightTerms) || containsTermSequence(rightTerms, leftTerms);
-}
-function hasPhraseMatch(record, query) {
-  const compactQuery = compactText(query);
-  if (!compactQuery) {
-    return { matched: false };
-  }
-  if (compactText(record.name) === compactQuery) {
-    return { matched: true, reason: { kind: "name", value: query } };
-  }
-  for (const alias of record.aliases) {
-    if (compactText(alias) === compactQuery || hasTermBoundaryMatch(alias, query)) {
-      return { matched: true, reason: { kind: "alias", value: alias } };
-    }
-  }
-  const normalizedSourceQuery = normalizeSourceIdentity(query);
-  for (const source of [
-    record.source.id,
-    record.source.displayName
-  ]) {
-    if (source && normalizeSourceIdentity(source) === normalizedSourceQuery) {
-      return { matched: true, reason: { kind: "source", value: source } };
-    }
-  }
-  if (hasTermBoundaryMatch(record.name, query)) {
-    return { matched: true, reason: { kind: "name", value: record.name } };
-  }
-  return { matched: false };
-}
-function highPriorityMatch(kinds) {
-  return kinds.has("name") || kinds.has("alias") || kinds.has("intent") || kinds.has("tag");
-}
-function classifyCandidate(prepared, totalRecords, frequenciesByDocument, query, queryTerms, materialScoreThreshold) {
-  const record = prepared.record;
-  const phrase = hasPhraseMatch(record, query);
-  const scored = scoreRecord(
-    prepared,
-    totalRecords,
-    frequenciesByDocument,
-    queryTerms
-  );
-  if (phrase.matched) {
-    return {
-      record,
-      tier: "strong",
-      score: Math.max(scored.score, materialScoreThreshold * 2),
-      reasons: phrase.reason ? [phrase.reason, ...scored.reasons].slice(0, 8) : scored.reasons.slice(0, 8)
-    };
-  }
-  const denseDescriptionEvidence = scored.descriptionMatchedTerms.size >= 3;
-  const materialEvidence = scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) || denseDescriptionEvidence || queryTerms.length === 1 && highPriorityMatch(scored.matchedKinds) && !(scored.matchedKinds.size === 1 && scored.matchedKinds.has("description"));
-  const evidenceAdjustedThreshold = denseDescriptionEvidence ? materialScoreThreshold * 0.58 : scored.matchedTerms.size >= 2 && scored.matchedKinds.size >= 2 && highPriorityMatch(scored.matchedKinds) ? materialScoreThreshold * 0.75 : materialScoreThreshold;
-  if (materialEvidence && scored.score >= evidenceAdjustedThreshold) {
-    return {
-      record,
-      tier: scored.matchedTerms.size >= 2 && scored.score >= materialScoreThreshold * 2 ? "strong" : "material",
-      score: scored.score,
-      reasons: scored.reasons.slice(0, 8)
-    };
-  }
-  if (scored.score > 0) {
-    return {
-      record,
-      tier: "possible",
-      score: scored.score,
-      reasons: scored.reasons.slice(0, 8)
-    };
-  }
-  return void 0;
-}
-function typoFallback(records, query) {
-  const queryTrigrams = trigrams(query);
-  if (queryTrigrams.size === 0) {
-    return [];
-  }
-  const candidates = records.filter((record) => record.trust !== "quarantined").map((record) => {
-    let best = jaccard(queryTrigrams, trigrams(record.name));
-    let reasonValue = record.name;
-    for (const alias of record.aliases) {
-      const similarity = jaccard(queryTrigrams, trigrams(alias));
-      if (similarity > best) {
-        best = similarity;
-        reasonValue = alias;
-      }
-    }
-    return { record, best, reasonValue };
-  }).filter((candidate) => candidate.best >= 0.62).sort(
-    (left, right) => right.best - left.best || left.record.ref.localeCompare(right.record.ref, "en")
-  );
-  if (candidates.length === 0) {
-    return [];
-  }
-  const first = candidates[0];
-  const second = candidates[1];
-  const uniqueStrong = first !== void 0 && first.best >= 0.76 && (!second || first.best - second.best >= 0.08);
-  return candidates.map((candidate, index) => ({
-    record: candidate.record,
-    tier: uniqueStrong && index === 0 ? "strong" : "possible",
-    score: candidate.best,
-    reasons: [{ kind: "typo", value: candidate.reasonValue }]
-  }));
-}
-function tierRank(tier) {
-  switch (tier) {
-    case "exact":
-      return 0;
-    case "strong":
-      return 1;
-    case "material":
-      return 2;
-    case "possible":
-      return 3;
-  }
-}
-function sortCandidates(candidates) {
-  return [...candidates].sort(
-    (left, right) => tierRank(left.tier) - tierRank(right.tier) || right.score - left.score || left.record.name.localeCompare(right.record.name, "en") || left.record.ref.localeCompare(right.record.ref, "en")
-  );
-}
-function searchRecords(records, query, materialScoreThreshold) {
-  const normalizedQuery = normalizeText(query);
-  const queryTerms = tokenize(normalizedQuery);
-  if (!normalizedQuery || queryTerms.length === 0) {
-    return { relevant: [], possible: [], expandedTerms: [] };
-  }
-  const searchable = records.filter((record) => record.trust !== "quarantined");
-  const prepared = searchable.map(prepareRecord);
-  const frequenciesByDocument = documentFrequencies(prepared, queryTerms);
-  const candidates = prepared.map(
-    (record) => classifyCandidate(
-      record,
-      prepared.length,
-      frequenciesByDocument,
-      query,
-      queryTerms,
-      materialScoreThreshold
-    )
-  ).filter((candidate) => candidate !== void 0);
-  let relevant = candidates.filter((candidate) => candidate.tier !== "possible");
-  let possible = candidates.filter((candidate) => candidate.tier === "possible");
-  if (relevant.length === 0) {
-    const typo = typoFallback(searchable, normalizedQuery);
-    relevant = typo.filter((candidate) => candidate.tier !== "possible");
-    possible = [
-      ...possible,
-      ...typo.filter((candidate) => candidate.tier === "possible")
-    ];
-  }
-  return {
-    relevant: sortCandidates(relevant),
-    possible: sortCandidates(possible),
-    expandedTerms: queryTerms
-  };
-}
-function toResolvedSkill(candidate) {
-  return {
-    ...toListedSkill(candidate.record),
-    relevance: {
-      tier: candidate.tier,
-      score: Number(candidate.score.toFixed(4)),
-      reasons: candidate.reasons
-    }
-  };
-}
+
+// src/stash-catalog.ts
+var literal = (value) => value.normalize("NFKC").toLocaleLowerCase("und").trim();
 function toListedSkill(record) {
   return {
     ref: record.ref,
     catalogId: record.catalogId,
-    ...record.group ? { group: record.group } : {},
     name: record.name,
-    description: compactDescription(record.description),
+    description: record.purpose ?? compactDescription(record.description),
+    ...record.group ? { group: record.group } : {},
     compatibility: record.compatibility,
     trust: record.trust,
-    ...Object.keys(record.source).length > 0 ? { source: record.source } : {},
+    source: record.source,
     contentHash: record.contentHash,
     ...record.managedSkillId ? { managedSkillId: record.managedSkillId } : {},
-    ...record.relatedCopies && record.relatedCopies.length > 0 ? { relatedCopies: record.relatedCopies } : {}
+    ...record.relatedCopies?.length ? { relatedCopies: record.relatedCopies } : {}
   };
 }
-
-// src/stash-catalog.ts
 function normalizeSourceSelector(source) {
   const url = normalizeSourceUrl(source);
   return {
@@ -9243,6 +9141,42 @@ function sourceSortKey(record) {
   }
   return "3:";
 }
+function summarizeList(records) {
+  const catalogs = /* @__PURE__ */ new Map();
+  const groups = /* @__PURE__ */ new Map();
+  const sources = /* @__PURE__ */ new Map();
+  for (const record of records) {
+    catalogs.set(record.catalogId, (catalogs.get(record.catalogId) ?? 0) + 1);
+    const group = record.group ?? "(ungrouped)";
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+    const normalizedUrl = record.source.url && normalizeSourceUrl(record.source.url);
+    const repository = normalizedUrl ? githubRepositoryIdentity(normalizedUrl) : void 0;
+    const key = repository ? `github:${repository}` : record.source.url ? `url:${normalizedUrl ?? record.source.url}` : record.source.id ? `id:${record.source.id}` : record.source.displayName ? `name:${record.source.displayName}` : "unattributed";
+    const current = sources.get(key) ?? {
+      label: sourceDisplayName(record.source),
+      ...record.source.url ? { url: record.source.url } : {},
+      count: 0,
+      catalogs: /* @__PURE__ */ new Set(),
+      groups: /* @__PURE__ */ new Set()
+    };
+    current.count++;
+    current.catalogs.add(record.catalogId);
+    current.groups.add(group);
+    sources.set(key, current);
+  }
+  const byCountThenName = (left, right) => right.count - left.count || left.name.localeCompare(right.name, "en");
+  return {
+    catalogs: [...catalogs].map(([name, count]) => ({ name, count })).sort(byCountThenName),
+    groups: [...groups].map(([name, count]) => ({ name, count })).sort(byCountThenName),
+    sources: [...sources.values()].map((source) => ({
+      label: source.label,
+      ...source.url ? { url: source.url } : {},
+      count: source.count,
+      catalogs: [...source.catalogs].sort((a, b) => a.localeCompare(b, "en")),
+      groups: [...source.groups].sort((a, b) => a.localeCompare(b, "en"))
+    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "en"))
+  };
+}
 var StashCatalogImplementation = class {
   #configuration;
   #cacheDir;
@@ -9252,279 +9186,86 @@ var StashCatalogImplementation = class {
     this.#cacheDir = cacheDir;
     this.#now = now;
   }
-  async #loadIndexes(catalogIds, applyManagedProjection = true) {
-    const selected = this.#selectRegistrations(catalogIds);
-    const indexes = [];
-    for (const catalog of selected) {
-      const loaded = await loadCatalogIndex(
-        catalog,
-        this.#cacheDir,
-        this.#configuration.defaults.cacheTtlMs,
-        this.#now
-      );
-      indexes.push(loaded.index);
-    }
-    const projected = applyManagedProjection ? await projectManagedCopies(indexes, this.#configuration.managedRoot) : { indexes, fingerprintPart: "" };
-    return {
-      indexes: projected.indexes,
-      registrations: selected,
-      warnings: projected.indexes.flatMap((index) => index.warnings),
-      fingerprint: sha256(
-        [
-          ...projected.indexes.map(
-            (index) => `${index.catalogId}:${index.fingerprint}`
-          ),
-          projected.fingerprintPart
-        ].sort().join("\n")
-      )
-    };
-  }
   #selectRegistrations(catalogIds) {
-    const enabled = this.#configuration.catalogs.filter(
-      (catalog) => catalog.enabled !== false
-    );
-    if (!catalogIds || catalogIds.length === 0) {
-      return enabled;
+    const enabled = this.#configuration.catalogs.filter((c) => c.enabled !== false);
+    if (!catalogIds?.length) return enabled;
+    if (catalogIds.some((id) => !enabled.some((c) => c.id === id))) {
+      throw new StashError("catalog-unavailable", "Unknown or disabled catalog.", 4);
     }
-    const requested = new Set(catalogIds);
-    const selected = enabled.filter((catalog) => requested.has(catalog.id));
-    const missing = [...requested].filter(
-      (id) => !selected.some((catalog) => catalog.id === id)
-    );
-    if (missing.length > 0) {
-      throw new StashError(
-        "catalog-unavailable",
-        `Unknown or disabled catalog(s): ${missing.join(", ")}.`,
-        4
-      );
-    }
-    return selected;
+    return enabled.filter((c) => catalogIds.includes(c.id));
   }
   async resolve(request) {
     const started = this.#now();
-    let loaded;
-    try {
-      loaded = await this.#loadIndexes(request.catalogIds);
-    } catch (error) {
-      if (error instanceof StashError && error.code === "catalog-unavailable") {
-        return {
-          schemaVersion: RESULT_SCHEMA_VERSION,
-          status: "catalog-unavailable",
-          mode: request.kind,
-          totalRelevant: 0,
-          totalPossible: 0,
-          page: { size: 0 },
-          matches: [],
-          diagnostics: {
-            indexVersion: INDEX_SCHEMA_VERSION,
-            stale: false,
-            elapsedMs: this.#now() - started,
-            warnings: [{ code: error.code, message: error.message }]
-          }
-        };
-      }
-      throw error;
-    }
-    const group = request.group ? normalizeText(request.group) : void 0;
-    const availableRecords = loaded.indexes.flatMap((index) => index.records).filter((record) => record.trust !== "quarantined");
-    const sourceSelectors = resolveRepositorySelectors(
-      availableRecords,
-      (request.sources ?? []).map(normalizeSourceSelector)
-    );
-    const hasSourceFilter = (request.sources?.length ?? 0) > 0;
-    const records = availableRecords.filter(
-      (record) => !hasSourceFilter || matchesSource(record, sourceSelectors)
-    ).filter(
-      (record) => !group || normalizeText(record.group ?? "") === group || normalizeText(record.group ?? "").startsWith(`${group} `)
-    );
-    switch (request.kind) {
-      case "exact":
-        return this.#resolveExact(
-          request.name,
-          records,
-          loaded,
-          started
-        );
-      case "list":
-        return this.#resolveList(request, records, loaded, started);
-      case "search":
-        return this.#resolveSearch(request, records, loaded, started);
-    }
-  }
-  #resolveExact(name, records, loaded, started) {
-    const normalized = compactText(name);
-    if (!normalized) {
-      return this.#emptyResult("exact", "invalid-request", loaded, started);
-    }
-    const matches = records.filter(
-      (record) => compactText(record.name) === normalized || record.aliases.some((alias) => compactText(alias) === normalized)
-    );
-    const resolved = matches.map((record) => {
-      const skill = toListedSkill(record);
-      skill.relevance = {
-        tier: "exact",
-        score: 1,
-        reasons: [
-          {
-            kind: compactText(record.name) === normalized ? "name" : "alias",
-            value: name
-          }
-        ]
-      };
-      return skill;
-    });
-    return {
+    const result = {
       schemaVersion: RESULT_SCHEMA_VERSION,
-      status: resolved.length === 0 ? "no-match" : resolved.length > 1 ? "ambiguous-exact" : "ok",
-      mode: "exact",
-      totalRelevant: resolved.length,
-      totalPossible: 0,
-      page: { size: resolved.length },
-      matches: resolved,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}
-      }
-    };
-  }
-  #resolveList(request, records, loaded, started) {
-    const sorted = [...records].sort(
-      (left, right) => sourceSortKey(left).localeCompare(sourceSortKey(right), "en") || left.catalogId.localeCompare(right.catalogId, "en") || (left.group ?? "").localeCompare(right.group ?? "", "en") || left.name.localeCompare(right.name, "en") || left.ref.localeCompare(right.ref, "en")
-    );
-    const requestHash = sha256(
-      JSON.stringify({
-        kind: request.kind,
-        catalogIds: request.catalogIds ?? [],
-        sources: request.sources ?? [],
-        group: request.group ?? ""
-      })
-    );
-    const paged = this.#page(
-      sorted.map(toListedSkill),
-      request.cursor,
-      request.pageSize,
-      loaded.fingerprint,
-      requestHash
-    );
-    if (paged.status === "cursor-stale") {
-      return this.#emptyResult("list", "cursor-stale", loaded, started);
-    }
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status: sorted.length > 0 ? "ok" : "no-match",
-      mode: "list",
-      totalRelevant: sorted.length,
-      totalPossible: 0,
-      page: {
-        size: paged.matches.length,
-        ...paged.nextCursor ? { nextCursor: paged.nextCursor } : {}
-      },
-      matches: paged.matches,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}
-      }
-    };
-  }
-  #resolveSearch(request, records, loaded, started) {
-    if (!normalizeText(request.query)) {
-      return this.#emptyResult("search", "invalid-request", loaded, started);
-    }
-    const searched = searchRecords(
-      records,
-      request.query,
-      this.#configuration.defaults.materialScoreThreshold
-    );
-    const displayed = request.includePossible ? [...searched.relevant, ...searched.possible] : searched.relevant;
-    const requestHash = sha256(
-      JSON.stringify({
-        kind: request.kind,
-        query: normalizeText(request.query),
-        catalogIds: request.catalogIds ?? [],
-        sources: request.sources ?? [],
-        group: request.group ?? "",
-        includePossible: request.includePossible ?? false
-      })
-    );
-    const paged = this.#page(
-      displayed.map(toResolvedSkill),
-      request.cursor,
-      request.pageSize,
-      loaded.fingerprint,
-      requestHash
-    );
-    if (paged.status === "cursor-stale") {
-      return this.#emptyResult("search", "cursor-stale", loaded, started);
-    }
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status: searched.relevant.length > 0 ? "ok" : "no-match",
-      mode: "search",
-      totalRelevant: searched.relevant.length,
-      totalPossible: searched.possible.length,
-      page: {
-        size: paged.matches.length,
-        ...paged.nextCursor ? { nextCursor: paged.nextCursor } : {}
-      },
-      matches: paged.matches,
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        expandedTerms: searched.expandedTerms,
-        ...loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}
-      }
-    };
-  }
-  #page(matches, cursor, requestedPageSize, fingerprint, requestHash) {
-    const pageSize = clampPageSize(
-      requestedPageSize,
-      this.#configuration.defaults.pageSize
-    );
-    let offset = 0;
-    if (cursor) {
-      const payload = decodeCursor(cursor);
-      if (!payload || payload.version !== 1 || payload.routingProfileVersion !== ROUTING_PROFILE_VERSION || payload.fingerprint !== fingerprint || payload.requestHash !== requestHash || !Number.isInteger(payload.offset) || payload.offset < 0) {
-        return { status: "cursor-stale", matches: [] };
-      }
-      offset = payload.offset;
-    }
-    const pageMatches = matches.slice(offset, offset + pageSize);
-    const nextOffset = offset + pageMatches.length;
-    return {
       status: "ok",
-      matches: pageMatches,
-      ...nextOffset < matches.length ? {
-        nextCursor: encodeCursor({
-          version: 1,
-          routingProfileVersion: ROUTING_PROFILE_VERSION,
-          fingerprint,
-          requestHash,
-          offset: nextOffset
-        })
-      } : {}
-    };
-  }
-  #emptyResult(mode, status, loaded, started) {
-    return {
-      schemaVersion: RESULT_SCHEMA_VERSION,
-      status,
-      mode,
-      totalRelevant: 0,
-      totalPossible: 0,
+      mode: request.kind,
+      total: 0,
       page: { size: 0 },
       matches: [],
-      diagnostics: {
-        indexVersion: INDEX_SCHEMA_VERSION,
-        stale: false,
-        elapsedMs: this.#now() - started,
-        ...loaded.warnings.length > 0 ? { warnings: loaded.warnings } : {}
-      }
+      diagnostics: { indexVersion: INDEX_SCHEMA_VERSION, elapsedMs: 0 }
     };
+    const finish = (status = result.status) => {
+      result.status = status;
+      result.diagnostics.elapsedMs = this.#now() - started;
+      return result;
+    };
+    if (!request || !["exact", "list"].includes(request.kind)) return finish("invalid-request");
+    let selected;
+    try {
+      selected = this.#selectRegistrations(request.catalogIds);
+    } catch (error) {
+      if (error instanceof StashError && error.code === "catalog-unavailable") return finish("catalog-unavailable");
+      throw error;
+    }
+    const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now);
+    result.diagnostics.snapshotAt = snapshot.generatedAt;
+    const exactName = request.kind === "exact" ? literal(request.name) : "";
+    const exactCatalog = exactName.includes(":") ? exactName.split(":")[0] : void 0;
+    const failures = snapshot.failures.filter((failure) => selected.some((c) => c.id === failure.catalogId) && (exactCatalog === void 0 || failure.catalogId === exactCatalog));
+    const warnings = [
+      ...snapshot.warnings,
+      ...snapshot.indexes.flatMap((index) => index.warnings),
+      ...failures.map((failure) => ({ code: "catalog-unavailable", message: failure.message }))
+    ];
+    if (warnings.length) result.diagnostics.warnings = warnings;
+    if (failures.length) return finish("catalog-unavailable");
+    const available = [
+      ...snapshot.indexes.flatMap((index) => index.records),
+      ...request.catalogIds?.length || exactCatalog !== void 0 ? snapshot.copies : []
+    ].filter((record) => record.trust !== "quarantined");
+    const sources = resolveRepositorySelectors(available, (request.sources ?? []).map(normalizeSourceSelector));
+    const groups = (request.groups ?? []).map(literal);
+    let records = available.filter((record) => selected.some((c) => c.id === record.catalogId) && (!sources.length || matchesSource(record, sources)) && (!groups.length || groups.includes(literal(record.group ?? "(ungrouped)"))));
+    if (request.kind === "exact") {
+      const name = exactName;
+      if (!name) return finish("invalid-request");
+      records = records.filter((record) => literal(record.name) === name || literal(record.ref) === name);
+      result.matches = records.map((record) => ({ ...toListedSkill(record), description: record.description }));
+      result.total = result.matches.length;
+      result.page.size = result.total;
+      return finish(result.total > 1 ? "ambiguous-exact" : result.total ? "ok" : "no-match");
+    }
+    const text = literal(request.text ?? "");
+    if (request.text !== void 0 && !text) return finish("invalid-request");
+    records = records.filter((record) => !text || [record.name, record.description, record.purpose ?? "", record.source.id ?? "", record.source.displayName ?? "", record.source.url ?? ""].some((field) => literal(field).includes(text)));
+    records.sort((a, b) => (a.group ?? "").localeCompare(b.group ?? "", "en") || sourceSortKey(a).localeCompare(sourceSortKey(b), "en") || a.name.localeCompare(b.name, "en") || a.ref.localeCompare(b.ref, "en"));
+    result.total = records.length;
+    result.summary = summarizeList(records);
+    const requestHash = sha256(JSON.stringify({ catalogIds: request.catalogIds ?? [], sources: request.sources ?? [], groups, text }));
+    let offset = 0;
+    if (request.cursor) {
+      const cursor = decodeCursor(request.cursor);
+      if (!cursor || cursor.version !== 2 || cursor.fingerprint !== snapshot.fingerprint || cursor.requestHash !== requestHash || !Number.isInteger(cursor.offset) || cursor.offset < 0 || cursor.offset > records.length) {
+        return finish("cursor-stale");
+      }
+      offset = cursor.offset;
+    }
+    const size = clampPageSize(request.pageSize, this.#configuration.defaults.pageSize);
+    result.matches = records.slice(offset, offset + size).map(toListedSkill);
+    result.page.size = result.matches.length;
+    if (offset + size < records.length) result.page.nextCursor = encodeCursor({ version: 2, fingerprint: snapshot.fingerprint, requestHash, offset: offset + size });
+    return finish(records.length ? "ok" : "no-match");
   }
   async read(request) {
     const resource = request.resource ?? "SKILL.md";
@@ -9537,10 +9278,12 @@ var StashCatalogImplementation = class {
         resource
       };
     }
-    const loaded = await this.#loadIndexes(void 0, false);
+    const registrations = this.#configuration.catalogs.filter((c) => c.enabled !== false && c.id === request.ref.split(":")[0]);
+    const indexes = [];
+    for (const catalog of registrations) indexes.push((await scanCatalog(catalog, this.#now)).index);
     let record;
     let index;
-    for (const candidateIndex of loaded.indexes) {
+    for (const candidateIndex of indexes) {
       const candidate = candidateIndex.records.find(
         (item) => item.ref === request.ref
       );
@@ -9566,10 +9309,10 @@ var StashCatalogImplementation = class {
         resource
       };
     }
-    const skillRoot = path6.dirname(
-      path6.resolve(index.root, record.relativeSkillFile)
+    const skillRoot = path9.dirname(
+      path9.resolve(index.root, record.relativeSkillFile)
     );
-    const candidatePath = path6.resolve(skillRoot, normalizedResource);
+    const candidatePath = path9.resolve(skillRoot, normalizedResource);
     if (!isPathInside(skillRoot, candidatePath) || !isPathInside(index.root, candidatePath)) {
       return {
         schemaVersion: RESULT_SCHEMA_VERSION,
@@ -9642,7 +9385,7 @@ var StashCatalogImplementation = class {
         bytes: resolvedSize
       };
     }
-    const buffer = await readFile5(resolvedPath);
+    const buffer = await readFile7(resolvedPath);
     if (buffer.includes(0)) {
       return {
         schemaVersion: RESULT_SCHEMA_VERSION,
@@ -9675,109 +9418,81 @@ var StashCatalogImplementation = class {
     };
   }
   async refresh(request = {}) {
-    const registrations = this.#selectRegistrations(request.catalogIds);
-    const results = [];
-    let failed = 0;
-    for (const catalog of registrations) {
-      try {
-        const index = await writeFreshIndex(
-          catalog,
-          this.#cacheDir,
-          this.#now
-        );
-        results.push({
-          catalogId: catalog.id,
-          indexed: index.records.length,
-          skipped: index.warnings.filter(
-            (warning) => warning.code === "invalid-skill"
-          ).length,
-          warnings: index.warnings
-        });
-      } catch (error) {
-        failed += 1;
-        results.push({
-          catalogId: catalog.id,
-          indexed: 0,
-          skipped: 0,
-          warnings: [
-            {
-              code: "refresh-failed",
-              message: String(error)
-            }
-          ]
-        });
-      }
-    }
+    const selected = this.#selectRegistrations(request.catalogIds);
+    const snapshot = await loadSnapshot(this.#configuration, this.#cacheDir, this.#now, true);
+    const failures = snapshot.failures.filter((failure) => selected.some((c) => c.id === failure.catalogId));
     return {
-      status: failed === 0 ? "ok" : failed === registrations.length ? "failed" : "partial",
-      catalogs: results
+      status: !failures.length ? "ok" : failures.length === selected.length ? "failed" : "partial",
+      catalogs: [...snapshot.indexes.filter((index) => selected.some((c) => c.id === index.catalogId)).map((index) => ({
+        catalogId: index.catalogId,
+        indexed: index.records.length,
+        skipped: index.warnings.filter((w) => w.code === "invalid-skill").length,
+        warnings: index.warnings
+      })), ...failures.map((failure) => ({
+        catalogId: failure.catalogId,
+        indexed: 0,
+        skipped: 0,
+        warnings: [{ code: "catalog-unavailable", message: failure.message }]
+      }))]
     };
   }
   async doctor(request = {}) {
-    const registrations = this.#selectRegistrations(request.catalogIds);
+    const selected = this.#selectRegistrations(request.catalogIds);
+    const indexes = [];
     const results = [];
     let failed = 0;
-    for (const catalog of registrations) {
+    for (const catalog of selected) {
       try {
-        const scanned = await scanCatalog(catalog, this.#now);
-        results.push({
-          catalogId: catalog.id,
-          root: scanned.index.root,
-          records: scanned.index.records.length,
-          warnings: scanned.index.warnings,
-          fingerprint: scanned.index.fingerprint
-        });
+        const { index } = await scanCatalog(catalog, this.#now);
+        indexes.push(index);
+        results.push({ catalogId: catalog.id, root: index.root, records: index.records.length, warnings: index.warnings, fingerprint: index.fingerprint });
       } catch (error) {
-        failed += 1;
-        results.push({
-          catalogId: catalog.id,
-          root: catalog.root,
-          records: 0,
-          warnings: [{ code: "doctor-failed", message: String(error) }],
-          fingerprint: ""
-        });
+        failed++;
+        results.push({ catalogId: catalog.id, root: catalog.root, records: 0, warnings: [{ code: "doctor-failed", message: String(error) }], fingerprint: "" });
       }
     }
-    const warningCount = results.reduce(
-      (sum, result) => sum + result.warnings.length,
-      0
-    );
+    const projected = await projectManagedCopies(indexes, this.#configuration.managedRoot);
+    const classified = classifyIndexes(projected.indexes, await readClassifications(this.#configuration.managedRoot));
+    const records = classified.indexes.flatMap((index) => index.records).filter((record) => record.trust !== "quarantined");
+    for (const result of results) result.warnings = classified.indexes.find((index) => index.catalogId === result.catalogId)?.warnings ?? result.warnings;
     return {
-      status: failed === registrations.length ? "failed" : failed > 0 || warningCount > 0 ? "warning" : "ok",
-      catalogs: results
+      status: failed && failed === selected.length ? "failed" : failed || classified.warnings.length || results.some((r) => r.warnings.length) ? "warning" : "ok",
+      catalogs: results,
+      coverage: {
+        total: records.length,
+        uncategorized: records.filter((record) => !record.group).map((record) => record.ref).sort(),
+        unattributed: records.filter((record) => !record.source.id && !record.source.displayName && !record.source.url).map((record) => record.ref).sort()
+      },
+      ...classified.warnings.length ? { warnings: classified.warnings } : {}
     };
   }
 };
 async function createStashCatalog(options = {}) {
   const loaded = await loadConfiguration(options);
-  return new StashCatalogImplementation(
-    loaded.configuration,
-    loaded.cacheDir,
-    options.now ?? Date.now
-  );
+  return new StashCatalogImplementation(loaded.configuration, loaded.cacheDir, options.now ?? Date.now);
 }
 
 // src/stash-lifecycle.ts
 var import_yaml3 = __toESM(require_dist(), 1);
-import { randomUUID } from "node:crypto";
+import { randomUUID as randomUUID3 } from "node:crypto";
 import {
-  lstat as lstat3,
+  lstat as lstat6,
   mkdir as mkdir2,
-  readFile as readFile6,
+  readFile as readFile8,
   readdir as readdir4,
   realpath as realpath6,
-  rename as rename2,
+  rename as rename3,
   rm,
-  unlink as unlink2,
-  writeFile as writeFile2
+  unlink,
+  writeFile as writeFile3
 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
-import path8 from "node:path";
+import path11 from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 // src/internal/lifecycle-host-policy.ts
 import { homedir as homedir2 } from "node:os";
-import path7 from "node:path";
+import path10 from "node:path";
 function resolveLifecycleTarget(target, homeDirectory = homedir2()) {
   if (target.host === "antigravity-cli") {
     throw new StashError(
@@ -9799,19 +9514,19 @@ function resolveLifecycleTarget(target, homeDirectory = homedir2()) {
       return {
         host: target.host,
         scope,
-        root: path7.join(homeDirectory, ".agents", "skills")
+        root: path10.join(homeDirectory, ".agents", "skills")
       };
     case "claude-code":
       return {
         host: target.host,
         scope,
-        root: path7.join(homeDirectory, ".claude", "skills")
+        root: path10.join(homeDirectory, ".claude", "skills")
       };
     case "antigravity-ide":
       return {
         host: target.host,
         scope,
-        root: path7.join(homeDirectory, ".gemini", "config", "skills")
+        root: path10.join(homeDirectory, ".gemini", "config", "skills")
       };
   }
 }
@@ -9892,7 +9607,7 @@ async function snapshotTree(sourceRoot) {
     if (error.failure === "root-unavailable") {
       throw new StashError(
         "skill-unavailable",
-        `Skill directory is unavailable at "${path8.resolve(sourceRoot)}": ${String(error.detail ?? error.message)}`,
+        `Skill directory is unavailable at "${path11.resolve(sourceRoot)}": ${String(error.detail ?? error.message)}`,
         4
       );
     }
@@ -9924,14 +9639,14 @@ async function snapshotTree(sourceRoot) {
 async function copySnapshot(snapshot, destination) {
   await mkdir2(destination, { recursive: false });
   for (const entry of snapshot.entries) {
-    const relative = entry.relativePath.split("/").join(path8.sep);
-    const target = path8.join(destination, relative);
+    const relative = entry.relativePath.split("/").join(path11.sep);
+    const target = path11.join(destination, relative);
     if (entry.kind === "directory") {
       await mkdir2(target, { recursive: false });
       continue;
     }
-    const source = path8.join(snapshot.root, relative);
-    const content = await readFile6(source);
+    const source = path11.join(snapshot.root, relative);
+    const content = await readFile8(source);
     if (sha256(content) !== entry.contentHash) {
       throw new StashError(
         "source-changed",
@@ -9939,12 +9654,12 @@ async function copySnapshot(snapshot, destination) {
         4
       );
     }
-    await writeFile2(target, content, { flag: "wx" });
+    await writeFile3(target, content, { flag: "wx" });
   }
 }
 async function pathType(target) {
   try {
-    const info = await lstat3(target);
+    const info = await lstat6(target);
     if (info.isSymbolicLink()) {
       return "link";
     }
@@ -9974,24 +9689,24 @@ function validManagedSkillRecord(value, name) {
     return false;
   }
   const record = value;
-  return record.schemaVersion === STORE_SCHEMA_VERSION && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === name && /^sha256:[0-9a-f]{64}$/iu.test(record.treeHash) && Boolean(record.source) && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path8.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && (record.source.updatedAt === void 0 || typeof record.source.updatedAt === "string") && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
-    (deployment) => typeof deployment.deploymentId === "string" && deployment.skillId === record.skillId && typeof deployment.targetId === "string" && deployment.targetId === targetIdentity(deployment) && deployment.ownership === "stash" && samePath(deployment.path, path8.join(deployment.root, record.name))
+  return record.schemaVersion === STORE_SCHEMA_VERSION && typeof record.skillId === "string" && record.skillId.length > 0 && record.name === name && /^sha256:[0-9a-f]{64}$/iu.test(record.treeHash) && Boolean(record.source) && (record.source.kind === "local-import" || record.source.kind === "standalone-archive") && typeof record.source.location === "string" && path11.isAbsolute(record.source.location) && typeof record.source.importedAt === "string" && (record.source.updatedAt === void 0 || typeof record.source.updatedAt === "string") && validStoredRemoteProvenance(record.source) && Array.isArray(record.deployments) && record.deployments.every(
+    (deployment) => typeof deployment.deploymentId === "string" && deployment.skillId === record.skillId && typeof deployment.targetId === "string" && deployment.targetId === targetIdentity(deployment) && deployment.ownership === "stash" && samePath(deployment.path, path11.join(deployment.root, record.name))
   );
 }
 async function isPluginContained(source) {
-  let current = path8.dirname(source);
+  let current = path11.dirname(source);
   for (let depth = 0; depth < 12; depth += 1) {
     const markers = [
-      path8.join(current, ".claude-plugin", "plugin.json"),
-      path8.join(current, ".codex-plugin", "plugin.json"),
-      path8.join(current, "plugin.json")
+      path11.join(current, ".claude-plugin", "plugin.json"),
+      path11.join(current, ".codex-plugin", "plugin.json"),
+      path11.join(current, "plugin.json")
     ];
     for (const marker of markers) {
       if (await pathType(marker) !== "missing") {
         return true;
       }
     }
-    const parent = path8.dirname(current);
+    const parent = path11.dirname(current);
     if (parent === current) {
       break;
     }
@@ -10002,16 +9717,18 @@ async function isPluginContained(source) {
 var StashLifecycleImplementation = class {
   #managedRoot;
   #now;
-  #lifecycleHome = path8.resolve(homedir3());
-  constructor(managedRoot, now) {
-    this.#managedRoot = path8.resolve(managedRoot);
+  #options;
+  #lifecycleHome = path11.resolve(homedir3());
+  constructor(managedRoot, now, options) {
+    this.#managedRoot = path11.resolve(managedRoot);
     this.#now = now;
+    this.#options = options;
   }
   #metadataRoot() {
-    return path8.join(this.#managedRoot, ".stash");
+    return path11.join(this.#managedRoot, ".stash");
   }
   #recordPath(name) {
-    return path8.join(this.#metadataRoot(), "records", `${name}.json`);
+    return path11.join(this.#metadataRoot(), "records", `${name}.json`);
   }
   async #ensureRealDirectory(target, label) {
     let type = await pathType(target);
@@ -10038,9 +9755,9 @@ var StashLifecycleImplementation = class {
     const canonicalManaged = await realpath6(this.#managedRoot);
     for (const [target, label] of [
       [this.#metadataRoot(), "Managed metadata root"],
-      [path8.join(this.#metadataRoot(), "records"), "Managed records root"],
-      [path8.join(this.#metadataRoot(), "staging"), "Managed staging root"],
-      [path8.join(this.#metadataRoot(), "journal"), "Managed journal root"]
+      [path11.join(this.#metadataRoot(), "records"), "Managed records root"],
+      [path11.join(this.#metadataRoot(), "staging"), "Managed staging root"],
+      [path11.join(this.#metadataRoot(), "journal"), "Managed journal root"]
     ]) {
       if (await pathType(target) !== "directory") {
         throw new StashError(
@@ -10072,21 +9789,21 @@ var StashLifecycleImplementation = class {
     }
     await this.#ensureRealDirectory(this.#metadataRoot(), "Managed metadata root");
     await this.#ensureRealDirectory(
-      path8.join(this.#metadataRoot(), "records"),
+      path11.join(this.#metadataRoot(), "records"),
       "Managed records root"
     );
     await this.#ensureRealDirectory(
-      path8.join(this.#metadataRoot(), "staging"),
+      path11.join(this.#metadataRoot(), "staging"),
       "Managed staging root"
     );
     await this.#ensureRealDirectory(
-      path8.join(this.#metadataRoot(), "journal"),
+      path11.join(this.#metadataRoot(), "journal"),
       "Managed journal root"
     );
     await this.#assertManagedLayout();
-    const manifestPath = path8.join(this.#managedRoot, "stash.catalog.yaml");
+    const manifestPath = path11.join(this.#managedRoot, "stash.catalog.yaml");
     try {
-      await writeFile2(
+      await writeFile3(
         manifestPath,
         "schemaVersion: 1\nid: managed\ndefaults:\n  trust: unreviewed\n  compatibility:\n    - codex\n    - claude-code\n    - antigravity\nskillDiscovery:\n  ignore:\n    - .stash\n",
         { encoding: "utf8", flag: "wx" }
@@ -10115,7 +9832,7 @@ var StashLifecycleImplementation = class {
     if (metadataType === "missing") {
       return false;
     }
-    const recordsRoot = path8.join(metadataRoot, "records");
+    const recordsRoot = path11.join(metadataRoot, "records");
     if (metadataType !== "directory" || await pathType(recordsRoot) !== "directory") {
       throw new StashError(
         "unsafe-managed-layout",
@@ -10136,7 +9853,7 @@ var StashLifecycleImplementation = class {
     return true;
   }
   #journalPath(operationId) {
-    return path8.join(this.#metadataRoot(), "journal", `${operationId}.json`);
+    return path11.join(this.#metadataRoot(), "journal", `${operationId}.json`);
   }
   async #writeJournal(journal) {
     const finalPath = this.#journalPath(journal.operationId);
@@ -10148,16 +9865,16 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    const temporaryPath = `${finalPath}.${randomUUID()}.tmp`;
-    await writeFile2(temporaryPath, `${JSON.stringify(journal, null, 2)}
+    const temporaryPath = `${finalPath}.${randomUUID3()}.tmp`;
+    await writeFile3(temporaryPath, `${JSON.stringify(journal, null, 2)}
 `, {
       encoding: "utf8",
       flag: "wx"
     });
     try {
-      await rename2(temporaryPath, finalPath);
+      await rename3(temporaryPath, finalPath);
     } catch (error) {
-      await unlink2(temporaryPath).catch(() => void 0);
+      await unlink(temporaryPath).catch(() => void 0);
       throw error;
     }
   }
@@ -10167,7 +9884,7 @@ var StashLifecycleImplementation = class {
     journal.stage = stage;
   }
   #updateDiscardPath(journal) {
-    return journal.discardPath ?? path8.join(
+    return journal.discardPath ?? path11.join(
       this.#metadataRoot(),
       "staging",
       `update-${journal.operationId}-discard`
@@ -10186,26 +9903,26 @@ var StashLifecycleImplementation = class {
       "commit-discarded",
       "cleanup-authorized"
     ]);
-    if (journal.schemaVersion !== 1 || journal.kind !== "managed-update" || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || typeof journal.skillId !== "string" || journal.skillId.length === 0 || !/^sha256:[0-9a-f]{64}$/iu.test(journal.oldTreeHash) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.newTreeHash) || journal.oldTreeHash === journal.newTreeHash || typeof journal.createdAt !== "string" || typeof journal.managedPath !== "string" || typeof journal.stagePath !== "string" || typeof journal.backupPath !== "string" || journal.discardPath !== void 0 && typeof journal.discardPath !== "string" || !path8.isAbsolute(journal.managedPath) || !path8.isAbsolute(journal.stagePath) || !path8.isAbsolute(journal.backupPath) || journal.discardPath !== void 0 && !path8.isAbsolute(journal.discardPath)) {
+    if (journal.schemaVersion !== 1 || journal.kind !== "managed-update" || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || typeof journal.skillId !== "string" || journal.skillId.length === 0 || !/^sha256:[0-9a-f]{64}$/iu.test(journal.oldTreeHash) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.newTreeHash) || journal.oldTreeHash === journal.newTreeHash || typeof journal.createdAt !== "string" || typeof journal.managedPath !== "string" || typeof journal.stagePath !== "string" || typeof journal.backupPath !== "string" || journal.discardPath !== void 0 && typeof journal.discardPath !== "string" || !path11.isAbsolute(journal.managedPath) || !path11.isAbsolute(journal.stagePath) || !path11.isAbsolute(journal.backupPath) || journal.discardPath !== void 0 && !path11.isAbsolute(journal.discardPath)) {
       throw new StashError(
         "invalid-lifecycle-journal",
         `Invalid or unsafe managed update journal "${journalPath}".`,
         5
       );
     }
-    const stagingRoot = path8.join(this.#metadataRoot(), "staging");
+    const stagingRoot = path11.join(this.#metadataRoot(), "staging");
     if (!samePath(
       journal.managedPath,
-      path8.join(this.#managedRoot, journal.name)
+      path11.join(this.#managedRoot, journal.name)
     ) || !samePath(
       journal.stagePath,
-      path8.join(stagingRoot, `update-${journal.operationId}-next`)
+      path11.join(stagingRoot, `update-${journal.operationId}-next`)
     ) || !samePath(
       journal.backupPath,
-      path8.join(stagingRoot, `update-${journal.operationId}-previous`)
+      path11.join(stagingRoot, `update-${journal.operationId}-previous`)
     ) || !samePath(
       this.#updateDiscardPath(journal),
-      path8.join(stagingRoot, `update-${journal.operationId}-discard`)
+      path11.join(stagingRoot, `update-${journal.operationId}-discard`)
     )) {
       throw new StashError(
         "invalid-lifecycle-journal",
@@ -10244,7 +9961,7 @@ var StashLifecycleImplementation = class {
         4
       );
     }
-    await rename2(source, destination);
+    await rename3(source, destination);
     const destinationHash = await this.#journalTreeHash(destination, label);
     if (destinationHash !== expectedTreeHash) {
       throw new StashError(
@@ -10268,11 +9985,7 @@ var StashLifecycleImplementation = class {
     if (type === "missing") {
       return;
     }
-    if (type === "directory") {
-      await rm(target, { recursive: true, force: true });
-      return;
-    }
-    await unlink2(target);
+    await recyclePath(target);
   }
   async #recoverUpdateJournal(journal, journalPath) {
     await this.#assertManagedLayout();
@@ -10302,7 +10015,7 @@ var StashLifecycleImplementation = class {
         );
       }
       await this.#removeAuthorizedUpdateTree(journal, journal.stagePath, "staging");
-      await unlink2(journalPath);
+      await unlink(journalPath);
       return "rolled-back";
     }
     if (journal.stage === "cleanup-authorized") {
@@ -10320,8 +10033,17 @@ var StashLifecycleImplementation = class {
           4
         );
       }
+      const discardHash2 = await this.#journalTreeHash(discardPath, "Managed update discard");
+      const expectedHash = record.treeHash === journal.newTreeHash ? journal.oldTreeHash : journal.newTreeHash;
+      if (discardHash2 !== void 0 && discardHash2 !== expectedHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed update discard drifted for "${journal.name}".`,
+          4
+        );
+      }
       await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
-      await unlink2(journalPath);
+      await unlink(journalPath);
       return record.treeHash === journal.newTreeHash ? "committed" : "rolled-back";
     }
     let stageHash = await this.#journalTreeHash(
@@ -10382,7 +10104,7 @@ var StashLifecycleImplementation = class {
         await this.#advanceJournal(journal, "cleanup-authorized");
         await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
       }
-      await unlink2(journalPath);
+      await unlink(journalPath);
       return "committed";
     }
     if (record.treeHash !== journal.oldTreeHash) {
@@ -10416,7 +10138,7 @@ var StashLifecycleImplementation = class {
         "Uncommitted managed update"
       );
       await this.#advanceJournal(journal, "rollback-discarded");
-      await rename2(journal.backupPath, journal.managedPath);
+      await rename3(journal.backupPath, journal.managedPath);
       restoredHash = await this.#journalTreeHash(
         journal.managedPath,
         "Restored managed tree"
@@ -10429,7 +10151,7 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      await rename2(journal.backupPath, journal.managedPath);
+      await rename3(journal.backupPath, journal.managedPath);
       restoredHash = await this.#journalTreeHash(
         journal.managedPath,
         "Restored managed tree"
@@ -10486,7 +10208,7 @@ var StashLifecycleImplementation = class {
       await this.#advanceJournal(journal, "cleanup-authorized");
       await this.#removeAuthorizedUpdateTree(journal, discardPath, "cleanup");
     }
-    await unlink2(journalPath);
+    await unlink(journalPath);
     return "rolled-back";
   }
   #validateUninstallJournal(journal, journalPath) {
@@ -10496,23 +10218,23 @@ var StashLifecycleImplementation = class {
       "record-tombstoned",
       "cleanup-authorized"
     ]);
-    if (journal.schemaVersion !== 1 || journal.kind !== "managed-uninstall" || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || typeof journal.skillId !== "string" || journal.skillId.length === 0 || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.recordHash) || typeof journal.managedExisted !== "boolean" || typeof journal.createdAt !== "string" || !path8.isAbsolute(journal.managedPath) || !path8.isAbsolute(journal.recordPath) || !path8.isAbsolute(journal.treeTombstone) || !path8.isAbsolute(journal.recordTombstone)) {
+    if (journal.schemaVersion !== 1 || journal.kind !== "managed-uninstall" || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || typeof journal.skillId !== "string" || journal.skillId.length === 0 || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.recordHash) || typeof journal.managedExisted !== "boolean" || typeof journal.createdAt !== "string" || !path11.isAbsolute(journal.managedPath) || !path11.isAbsolute(journal.recordPath) || !path11.isAbsolute(journal.treeTombstone) || !path11.isAbsolute(journal.recordTombstone)) {
       throw new StashError(
         "invalid-lifecycle-journal",
         `Invalid or unsafe managed uninstall journal "${journalPath}".`,
         5
       );
     }
-    const stagingRoot = path8.join(this.#metadataRoot(), "staging");
+    const stagingRoot = path11.join(this.#metadataRoot(), "staging");
     if (!samePath(
       journal.managedPath,
-      path8.join(this.#managedRoot, journal.name)
+      path11.join(this.#managedRoot, journal.name)
     ) || !samePath(journal.recordPath, this.#recordPath(journal.name)) || !samePath(
       journal.treeTombstone,
-      path8.join(stagingRoot, `uninstall-${journal.operationId}-tree`)
+      path11.join(stagingRoot, `uninstall-${journal.operationId}-tree`)
     ) || !samePath(
       journal.recordTombstone,
-      path8.join(
+      path11.join(
         stagingRoot,
         `uninstall-${journal.operationId}-record.json`
       )
@@ -10537,7 +10259,7 @@ var StashLifecycleImplementation = class {
       );
     }
     try {
-      const source = await readFile6(target, "utf8");
+      const source = await readFile8(target, "utf8");
       const parsed = JSON.parse(source);
       if (!validManagedSkillRecord(parsed, journal.name) || parsed.skillId !== journal.skillId || parsed.treeHash !== journal.treeHash || parsed.deployments.length !== 0 || sha256(source) !== journal.recordHash) {
         throw new Error("record identity or content changed");
@@ -10560,7 +10282,7 @@ var StashLifecycleImplementation = class {
       );
     }
     await this.#journalRecordHash(journal, source, label);
-    await rename2(source, destination);
+    await rename3(source, destination);
     await this.#journalRecordHash(journal, destination, label);
   }
   async #removeAuthorizedUninstallPath(journal, target, kind) {
@@ -10577,11 +10299,7 @@ var StashLifecycleImplementation = class {
     if (type === "missing") {
       return;
     }
-    if (type === "directory") {
-      await rm(target, { recursive: true, force: true });
-      return;
-    }
-    await unlink2(target);
+    await recyclePath(target);
   }
   async #recoverUninstallJournal(journal, journalPath) {
     await this.#assertManagedLayout();
@@ -10593,6 +10311,22 @@ var StashLifecycleImplementation = class {
           4
         );
       }
+      const treeHash2 = await this.#journalTreeHash(
+        journal.treeTombstone,
+        "Managed uninstall tree tombstone"
+      );
+      if (treeHash2 !== void 0 && treeHash2 !== journal.treeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Managed uninstall tree drifted for "${journal.name}".`,
+          4
+        );
+      }
+      await this.#journalRecordHash(
+        journal,
+        journal.recordTombstone,
+        "Managed uninstall record tombstone"
+      );
       await this.#removeAuthorizedUninstallPath(
         journal,
         journal.treeTombstone,
@@ -10603,7 +10337,7 @@ var StashLifecycleImplementation = class {
         journal.recordTombstone,
         "record"
       );
-      await unlink2(journalPath);
+      await unlink(journalPath);
       return "committed";
     }
     const managedHash = await this.#journalTreeHash(
@@ -10683,7 +10417,7 @@ var StashLifecycleImplementation = class {
         "Managed uninstall record tombstone"
       );
     }
-    await unlink2(journalPath);
+    await unlink(journalPath);
     return "rolled-back";
   }
   async #removeIncompleteManaged(journal) {
@@ -10707,9 +10441,9 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      await rm(journal.managedPath, { recursive: true, force: false });
+      await recyclePath(journal.managedPath);
     }
-    await unlink2(this.#recordPath(journal.name)).catch((error) => {
+    await unlink(this.#recordPath(journal.name)).catch((error) => {
       const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
       if (code !== "ENOENT") {
         throw error;
@@ -10724,16 +10458,16 @@ var StashLifecycleImplementation = class {
       "archive-committed",
       "cleanup-authorized"
     ]);
-    if (journal.schemaVersion !== 2 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path8.isAbsolute(journal.source) || !path8.isAbsolute(journal.tombstone) || !path8.isAbsolute(journal.managedPath)) {
+    if (journal.schemaVersion !== 2 || !/^[0-9a-f-]{36}$/iu.test(journal.operationId) || !stages.has(journal.stage) || !NAME_PATTERN2.test(journal.name) || !/^sha256:[0-9a-f]{64}$/iu.test(journal.treeHash) || typeof journal.managedExistedBefore !== "boolean" || typeof journal.createdAt !== "string" || typeof journal.source !== "string" || typeof journal.tombstone !== "string" || typeof journal.managedPath !== "string" || !path11.isAbsolute(journal.source) || !path11.isAbsolute(journal.tombstone) || !path11.isAbsolute(journal.managedPath)) {
       throw new StashError(
         "invalid-lifecycle-journal",
         `Invalid or unsafe lifecycle journal "${journalPath}".`,
         5
       );
     }
-    const expectedManagedPath = path8.join(this.#managedRoot, journal.name);
-    const expectedTombstoneParent = path8.dirname(path8.dirname(journal.source));
-    const expectedTombstone = path8.join(
+    const expectedManagedPath = path11.join(this.#managedRoot, journal.name);
+    const expectedTombstoneParent = path11.dirname(path11.dirname(journal.source));
+    const expectedTombstone = path11.join(
       expectedTombstoneParent,
       `.stash-archive-${journal.name}-${journal.operationId}`
     );
@@ -10749,13 +10483,16 @@ var StashLifecycleImplementation = class {
     const sourceType = await pathType(journal.source);
     const tombstoneType = await pathType(journal.tombstone);
     if (journal.stage === "cleanup-authorized") {
-      const currentType = await pathType(journal.tombstone);
-      if (currentType === "directory") {
-        await rm(journal.tombstone, { recursive: true, force: true });
-      } else if (currentType !== "missing") {
-        await unlink2(journal.tombstone);
+      const treeHash2 = await this.#journalTreeHash(journal.tombstone, "Archive tombstone");
+      if (treeHash2 !== void 0 && treeHash2 !== journal.treeHash) {
+        throw new StashError(
+          "lifecycle-recovery-conflict",
+          `Archive tombstone drifted: "${journal.tombstone}".`,
+          4
+        );
       }
-      await unlink2(journalPath);
+      await recyclePath(journal.tombstone);
+      await unlink(journalPath);
       return;
     }
     if (journal.stage === "archive-committed") {
@@ -10776,9 +10513,9 @@ var StashLifecycleImplementation = class {
           );
         }
         await this.#advanceJournal(journal, "cleanup-authorized");
-        await rm(journal.tombstone, { recursive: true, force: true });
+        await recyclePath(journal.tombstone);
       }
-      await unlink2(journalPath);
+      await unlink(journalPath);
       return;
     }
     const sourceWasMoved = journal.stage === "source-tombstoned" || sourceType === "missing" && tombstoneType !== "missing";
@@ -10805,23 +10542,23 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      await rename2(journal.tombstone, journal.source);
+      await rename3(journal.tombstone, journal.source);
     }
     await this.#removeIncompleteManaged(journal);
-    await unlink2(journalPath);
+    await unlink(journalPath);
   }
   async #recoverJournals() {
-    const journalRoot = path8.join(this.#metadataRoot(), "journal");
+    const journalRoot = path11.join(this.#metadataRoot(), "journal");
     const files = (await readdir4(journalRoot)).filter((name) => name.endsWith(".json")).sort((left, right) => left.localeCompare(right, "en"));
     for (const file of files) {
-      const journalPath = path8.join(journalRoot, file);
+      const journalPath = path11.join(journalRoot, file);
       let journal;
       try {
         if (await pathType(journalPath) !== "file") {
           throw new Error("journal is not a real file");
         }
         journal = JSON.parse(
-          await readFile6(journalPath, "utf8")
+          await readFile8(journalPath, "utf8")
         );
       } catch (error) {
         throw new StashError(
@@ -10846,12 +10583,12 @@ var StashLifecycleImplementation = class {
   async #readLockOwner(lockPath) {
     let owner;
     try {
-      const ownerPath = path8.join(lockPath, "owner.json");
+      const ownerPath = path11.join(lockPath, "owner.json");
       if (await pathType(ownerPath) !== "file") {
         throw new Error("lock owner is not a real file");
       }
       owner = JSON.parse(
-        await readFile6(ownerPath, "utf8")
+        await readFile8(ownerPath, "utf8")
       );
     } catch (error) {
       throw new StashError(
@@ -10879,20 +10616,20 @@ var StashLifecycleImplementation = class {
     }
   }
   async #publishLock(lockPath, owner) {
-    const temporaryPath = path8.join(
+    const temporaryPath = path11.join(
       this.#metadataRoot(),
       `.lifecycle-lock-${owner.ownerToken}.tmp`
     );
     await mkdir2(temporaryPath, { recursive: false });
     try {
-      await writeFile2(
-        path8.join(temporaryPath, "owner.json"),
+      await writeFile3(
+        path11.join(temporaryPath, "owner.json"),
         `${JSON.stringify(owner)}
 `,
         { encoding: "utf8", flag: "wx" }
       );
       try {
-        await rename2(temporaryPath, lockPath);
+        await rename3(temporaryPath, lockPath);
         return true;
       } catch (error) {
         if (await pathType(lockPath) === "directory") {
@@ -10907,7 +10644,7 @@ var StashLifecycleImplementation = class {
     }
   }
   async #reclaimDeadLock(lockPath) {
-    const guardPath = path8.join(this.#metadataRoot(), "lifecycle.reclaim");
+    const guardPath = path11.join(this.#metadataRoot(), "lifecycle.reclaim");
     try {
       await mkdir2(guardPath, { recursive: false });
     } catch (error) {
@@ -10939,11 +10676,11 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      const reclaimedPath = path8.join(
+      const reclaimedPath = path11.join(
         this.#metadataRoot(),
-        `.lifecycle-reclaimed-${owner.ownerToken}-${randomUUID()}`
+        `.lifecycle-reclaimed-${owner.ownerToken}-${randomUUID3()}`
       );
-      await rename2(lockPath, reclaimedPath);
+      await rename3(lockPath, reclaimedPath);
       const reclaimedOwner = await this.#readLockOwner(reclaimedPath);
       if (reclaimedOwner.ownerToken !== owner.ownerToken) {
         throw new StashError(
@@ -10962,7 +10699,7 @@ var StashLifecycleImplementation = class {
   async #acquireLock(lockPath) {
     const owner = {
       schemaVersion: 1,
-      ownerToken: randomUUID(),
+      ownerToken: randomUUID3(),
       pid: process.pid,
       createdAt: new Date(this.#now()).toISOString()
     };
@@ -10999,15 +10736,46 @@ var StashLifecycleImplementation = class {
   }
   async #withLock(operation) {
     await this.#ensureLayout();
-    const lockPath = path8.join(this.#metadataRoot(), "lifecycle.lock");
+    const lockPath = path11.join(this.#metadataRoot(), "lifecycle.lock");
     const owner = await this.#acquireLock(lockPath);
     try {
       await this.#assertManagedLayout();
+      const revision2 = path11.join(this.#metadataRoot(), "revision");
+      const temporary = `${revision2}.${randomUUID3()}.tmp`;
+      await writeFile3(temporary, randomUUID3(), { encoding: "utf8", flag: "wx" });
+      try {
+        await rename3(temporary, revision2);
+      } catch (error) {
+        await recyclePath(temporary).catch(() => void 0);
+        throw error;
+      }
       await this.#recoverJournals();
       return await operation();
     } finally {
       await this.#releaseLock(lockPath, owner);
     }
+  }
+  async classify(request) {
+    validateClassification(request);
+    if (!/^[a-z0-9][a-z0-9._-]*:.+$/u.test(request.ref)) {
+      throw new StashError("invalid-argument", "classify requires an exact catalog ref.", 2);
+    }
+    return this.#withLock(async () => {
+      const catalog = await createStashCatalog({ ...this.#options, managedRoot: this.#managedRoot });
+      const selected = await catalog.read({ ref: request.ref, expectedHash: request.contentHash });
+      if (selected.status !== "ok") {
+        throw new StashError(selected.status, "Classification requires the current, readable SKILL.md content hash.", 3);
+      }
+      const data = await readClassifications(this.#managedRoot);
+      const { ref, ...classification } = request;
+      const previous = data.skills[ref];
+      if (classification.source === void 0 && previous?.contentHash === classification.contentHash && previous.source !== void 0) {
+        classification.source = previous.source;
+      }
+      data.skills[ref] = classification;
+      await writeClassifications(this.#managedRoot, data);
+      return { status: "classified", ref };
+    });
   }
   async #readRecord(name) {
     if (!NAME_PATTERN2.test(name)) {
@@ -11026,7 +10794,7 @@ var StashLifecycleImplementation = class {
       if (type !== "file") {
         throw new Error("lifecycle record is not a real file");
       }
-      const parsed = JSON.parse(await readFile6(recordPath, "utf8"));
+      const parsed = JSON.parse(await readFile8(recordPath, "utf8"));
       if (!validManagedSkillRecord(parsed, name)) {
         throw new Error("invalid lifecycle record shape");
       }
@@ -11053,16 +10821,16 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    const temporaryPath = `${finalPath}.${randomUUID()}.tmp`;
-    await writeFile2(temporaryPath, `${JSON.stringify(record, null, 2)}
+    const temporaryPath = `${finalPath}.${randomUUID3()}.tmp`;
+    await writeFile3(temporaryPath, `${JSON.stringify(record, null, 2)}
 `, {
       encoding: "utf8",
       flag: "wx"
     });
     try {
-      await rename2(temporaryPath, finalPath);
+      await rename3(temporaryPath, finalPath);
     } catch (error) {
-      await unlink2(temporaryPath).catch(() => void 0);
+      await unlink(temporaryPath).catch(() => void 0);
       throw error;
     }
   }
@@ -11095,9 +10863,9 @@ var StashLifecycleImplementation = class {
       );
     }
   }
-  #sourceProvenance(sourceUrl, revision, repositoryPath, trackingRef) {
+  #sourceProvenance(sourceUrl, revision2, repositoryPath, trackingRef) {
     const requestedUrl = sourceUrl?.trim() || void 0;
-    const requestedRevision = revision?.trim() || void 0;
+    const requestedRevision = revision2?.trim() || void 0;
     const requestedPath = repositoryPath || void 0;
     const requestedTrackingRef = trackingRef || void 0;
     const canonicalUrl = requestedUrl ? canonicalLifecycleSourceUrl(requestedUrl) : void 0;
@@ -11153,7 +10921,7 @@ var StashLifecycleImplementation = class {
       type = await pathType(root);
     }
     if (type === "missing" && allowMissing) {
-      return path8.resolve(root);
+      return path11.resolve(root);
     }
     if (type !== "directory") {
       throw new StashError(
@@ -11164,7 +10932,7 @@ var StashLifecycleImplementation = class {
     }
     return realpath6(root);
   }
-  async #storeSource(source, kind, sourceUrl, revision, repositoryPath, trackingRef, expectedTreeHash) {
+  async #storeSource(source, kind, sourceUrl, revision2, repositoryPath, trackingRef, expectedTreeHash) {
     await this.#assertSourceBoundary(source);
     const snapshot = await snapshotTree(source);
     if (expectedTreeHash && snapshot.treeHash !== expectedTreeHash) {
@@ -11177,7 +10945,7 @@ var StashLifecycleImplementation = class {
     const metadata = parseSkillMetadata(snapshot);
     const provenance = this.#sourceProvenance(
       sourceUrl,
-      revision,
+      revision2,
       repositoryPath,
       trackingRef
     );
@@ -11188,7 +10956,7 @@ var StashLifecycleImplementation = class {
         2
       );
     }
-    const managedPath = path8.join(this.#managedRoot, metadata.name);
+    const managedPath = path11.join(this.#managedRoot, metadata.name);
     const existingType = await pathType(managedPath);
     if (existingType !== "missing") {
       if (existingType !== "directory") {
@@ -11220,7 +10988,7 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    const stage = path8.join(this.#metadataRoot(), "staging", randomUUID());
+    const stage = path11.join(this.#metadataRoot(), "staging", randomUUID3());
     let committed = false;
     try {
       await copySnapshot(snapshot, stage);
@@ -11235,7 +11003,7 @@ var StashLifecycleImplementation = class {
       const timestamp = new Date(this.#now()).toISOString();
       const record = {
         schemaVersion: STORE_SCHEMA_VERSION,
-        skillId: randomUUID(),
+        skillId: randomUUID3(),
         name: metadata.name,
         treeHash: snapshot.treeHash,
         source: {
@@ -11251,12 +11019,12 @@ var StashLifecycleImplementation = class {
         deployments: [],
         lastValidatedAt: timestamp
       };
-      await rename2(stage, managedPath);
+      await rename3(stage, managedPath);
       committed = true;
       try {
         await this.#writeRecord(record);
       } catch (error) {
-        await rm(managedPath, { recursive: true, force: false }).catch(
+        await recyclePath(managedPath).catch(
           () => void 0
         );
         throw error;
@@ -11264,14 +11032,14 @@ var StashLifecycleImplementation = class {
       return { record, managedPath, created: true };
     } finally {
       if (!committed) {
-        await rm(stage, { recursive: true, force: true }).catch(() => void 0);
+        await recyclePath(stage).catch(() => void 0);
       }
     }
   }
   async install(request) {
     return this.#withLock(async () => {
       const stored = await this.#storeSource(
-        path8.resolve(request.source),
+        path11.resolve(request.source),
         "local-import",
         request.sourceUrl,
         request.revision,
@@ -11296,11 +11064,11 @@ var StashLifecycleImplementation = class {
           2
         );
       }
-      const source = path8.resolve(request.source);
+      const source = path11.resolve(request.source);
       await this.#assertSourceBoundary(source);
       const snapshot = await snapshotTree(source);
       const metadata = parseSkillMetadata(snapshot);
-      const managedPath = path8.join(this.#managedRoot, metadata.name);
+      const managedPath = path11.join(this.#managedRoot, metadata.name);
       const record = await this.#readRecord(metadata.name);
       if (!record) {
         throw new StashError(
@@ -11481,18 +11249,18 @@ var StashLifecycleImplementation = class {
         await this.#writeRecord(updatedRecord);
         return resultFor("metadata-updated");
       }
-      const operationId = randomUUID();
-      const stagePath = path8.join(
+      const operationId = randomUUID3();
+      const stagePath = path11.join(
         this.#metadataRoot(),
         "staging",
         `update-${operationId}-next`
       );
-      const backupPath = path8.join(
+      const backupPath = path11.join(
         this.#metadataRoot(),
         "staging",
         `update-${operationId}-previous`
       );
-      const discardPath = path8.join(
+      const discardPath = path11.join(
         this.#metadataRoot(),
         "staging",
         `update-${operationId}-discard`
@@ -11525,7 +11293,7 @@ var StashLifecycleImplementation = class {
         }
         await this.#advanceJournal(journal, "stage-ready");
         await this.#assertUpdateCommitBoundary(record, managedPath);
-        await rename2(managedPath, backupPath);
+        await rename3(managedPath, backupPath);
         const backupSnapshot = await snapshotTree(backupPath);
         if (backupSnapshot.treeHash !== record.treeHash) {
           throw new StashError(
@@ -11535,7 +11303,7 @@ var StashLifecycleImplementation = class {
           );
         }
         await this.#advanceJournal(journal, "old-tombstoned");
-        await rename2(stagePath, managedPath);
+        await rename3(stagePath, managedPath);
         await this.#advanceJournal(journal, "new-committed");
         const committedSnapshot = await snapshotTree(managedPath);
         if (committedSnapshot.treeHash !== snapshot.treeHash) {
@@ -11586,7 +11354,7 @@ var StashLifecycleImplementation = class {
       }
       if (!warning) {
         try {
-          await unlink2(this.#journalPath(journal.operationId));
+          await unlink(this.#journalPath(journal.operationId));
         } catch (error) {
           warning = `Update committed, but its recovery journal remains for later cleanup: ${String(error)}`;
         }
@@ -11610,10 +11378,10 @@ var StashLifecycleImplementation = class {
         false
       );
       const looksLikeName = NAME_PATTERN2.test(request.source);
-      const source = path8.resolve(
-        looksLikeName ? path8.join(resolvedTarget.root, request.source) : request.source
+      const source = path11.resolve(
+        looksLikeName ? path11.join(resolvedTarget.root, request.source) : request.source
       );
-      if (!samePath(path8.dirname(source), resolvedTarget.root)) {
+      if (!samePath(path11.dirname(source), resolvedTarget.root)) {
         throw new StashError(
           "unsafe-archive-source",
           `Archive source must be an exact standalone child of the selected host root "${resolvedTarget.root}".`,
@@ -11630,7 +11398,7 @@ var StashLifecycleImplementation = class {
       await this.#assertSourceBoundary(source);
       const sourceSnapshot = await snapshotTree(source);
       const metadata = parseSkillMetadata(sourceSnapshot);
-      const managedPath = path8.join(this.#managedRoot, metadata.name);
+      const managedPath = path11.join(this.#managedRoot, metadata.name);
       const existingRecord = await this.#readRecord(metadata.name);
       const managedType = await pathType(managedPath);
       const selectedTargetId = targetIdentity(resolvedTarget);
@@ -11660,10 +11428,10 @@ var StashLifecycleImplementation = class {
         );
       }
       const managedExistedBefore = managedType !== "missing" || existingRecord !== void 0;
-      const tombstoneParent = path8.dirname(resolvedTarget.root);
+      const tombstoneParent = path11.dirname(resolvedTarget.root);
       await mkdir2(tombstoneParent, { recursive: true });
-      const operationId = randomUUID();
-      const tombstone = path8.join(
+      const operationId = randomUUID3();
+      const tombstone = path11.join(
         tombstoneParent,
         `.stash-archive-${metadata.name}-${operationId}`
       );
@@ -11698,7 +11466,7 @@ var StashLifecycleImplementation = class {
           );
         }
         await this.#advanceJournal(journal, "managed-committed");
-        await rename2(source, tombstone);
+        await rename3(source, tombstone);
         await this.#advanceJournal(journal, "source-tombstoned");
         const movedSnapshot = await snapshotTree(tombstone);
         if (movedSnapshot.treeHash !== stored.record.treeHash) {
@@ -11712,13 +11480,13 @@ var StashLifecycleImplementation = class {
         let warning;
         try {
           await this.#advanceJournal(journal, "cleanup-authorized");
-          await rm(tombstone, { recursive: true, force: true });
+          await recyclePath(tombstone);
         } catch (error) {
           warning = `The skill is outside host discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
         }
         if (!warning) {
           try {
-            await unlink2(this.#journalPath(journal.operationId));
+            await unlink(this.#journalPath(journal.operationId));
           } catch (error) {
             warning = `Archive committed, but its recovery journal remains for later cleanup: ${String(error)}`;
           }
@@ -11753,7 +11521,7 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      const managedPath = path8.join(this.#managedRoot, request.name);
+      const managedPath = path11.join(this.#managedRoot, request.name);
       const managedSnapshot = await snapshotTree(managedPath);
       if (managedSnapshot.treeHash !== record.treeHash) {
         throw new StashError(
@@ -11764,7 +11532,7 @@ var StashLifecycleImplementation = class {
       }
       const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, true);
-      const deploymentPath = path8.join(target.root, request.name);
+      const deploymentPath = path11.join(target.root, request.name);
       const targetId = targetIdentity(target);
       const existing = await pathType(deploymentPath);
       const tracked = record.deployments.find(
@@ -11792,9 +11560,9 @@ var StashLifecycleImplementation = class {
           3
         );
       }
-      const stage = path8.join(
-        path8.dirname(target.root),
-        `.stash-deploy-${record.name}-${randomUUID()}`
+      const stage = path11.join(
+        path11.dirname(target.root),
+        `.stash-deploy-${record.name}-${randomUUID3()}`
       );
       let committed = false;
       try {
@@ -11807,10 +11575,10 @@ var StashLifecycleImplementation = class {
             4
           );
         }
-        await rename2(stage, deploymentPath);
+        await rename3(stage, deploymentPath);
         committed = true;
         const deployment = {
-          deploymentId: randomUUID(),
+          deploymentId: randomUUID3(),
           skillId: record.skillId,
           targetId,
           host: target.host,
@@ -11832,7 +11600,7 @@ var StashLifecycleImplementation = class {
         try {
           await this.#writeRecord(record);
         } catch (error) {
-          await rm(deploymentPath, { recursive: true, force: false }).catch(
+          await recyclePath(deploymentPath).catch(
             () => void 0
           );
           throw error;
@@ -11849,13 +11617,13 @@ var StashLifecycleImplementation = class {
         };
       } finally {
         if (!committed) {
-          await rm(stage, { recursive: true, force: true }).catch(() => void 0);
+          await recyclePath(stage).catch(() => void 0);
         }
       }
     });
   }
   async #deactivateDeployment(record, managedPath, target) {
-    const deploymentPath = path8.join(target.root, record.name);
+    const deploymentPath = path11.join(target.root, record.name);
     const targetId = targetIdentity(target);
     const deployment = record.deployments.find(
       (candidate) => samePath(candidate.path, deploymentPath) && candidate.targetId === targetId
@@ -11898,15 +11666,15 @@ var StashLifecycleImplementation = class {
         3
       );
     }
-    const tombstone = path8.join(
-      path8.dirname(target.root),
-      `.stash-deactivate-${record.name}-${randomUUID()}`
+    const tombstone = path11.join(
+      path11.dirname(target.root),
+      `.stash-deactivate-${record.name}-${randomUUID3()}`
     );
-    await rename2(deploymentPath, tombstone);
+    await rename3(deploymentPath, tombstone);
     try {
       const movedSnapshot = await snapshotTree(tombstone);
       if (movedSnapshot.treeHash !== deployment.treeHash) {
-        await rename2(tombstone, deploymentPath);
+        await rename3(tombstone, deploymentPath);
         throw new StashError(
           "deployment-drift",
           `Deployment changed during deactivation and was restored: "${deploymentPath}".`,
@@ -11922,12 +11690,12 @@ var StashLifecycleImplementation = class {
         await this.#writeRecord(record);
       } catch (error) {
         record.deployments = previousDeployments;
-        await rename2(tombstone, deploymentPath).catch(() => void 0);
+        await rename3(tombstone, deploymentPath).catch(() => void 0);
         throw error;
       }
       let warning;
       try {
-        await rm(tombstone, { recursive: true, force: false });
+        await recyclePath(tombstone);
       } catch (error) {
         warning = `Deployment left discovery, but cleanup remains at "${tombstone}": ${String(error)}`;
       }
@@ -11942,7 +11710,7 @@ var StashLifecycleImplementation = class {
       };
     } catch (error) {
       if (await pathType(tombstone) !== "missing") {
-        await rename2(tombstone, deploymentPath).catch(() => void 0);
+        await rename3(tombstone, deploymentPath).catch(() => void 0);
       }
       throw error;
     }
@@ -11957,7 +11725,7 @@ var StashLifecycleImplementation = class {
           4
         );
       }
-      const managedPath = path8.join(this.#managedRoot, request.name);
+      const managedPath = path11.join(this.#managedRoot, request.name);
       const target = resolveLifecycleTarget(request.target, this.#lifecycleHome);
       target.root = await this.#canonicalHostRoot(target.root, false, true);
       return this.#deactivateDeployment(record, managedPath, target);
@@ -11980,7 +11748,7 @@ var StashLifecycleImplementation = class {
           3
         );
       }
-      const managedPath = path8.join(this.#managedRoot, record.name);
+      const managedPath = path11.join(this.#managedRoot, record.name);
       const managedType = await pathType(managedPath);
       if (managedType !== "missing" && managedType !== "directory") {
         throw new StashError(
@@ -12000,10 +11768,10 @@ var StashLifecycleImplementation = class {
           );
         }
       }
-      const operationId = randomUUID();
+      const operationId = randomUUID3();
       const recordPath = this.#recordPath(record.name);
-      const recordSource = await readFile6(recordPath, "utf8");
-      const stagingRoot = path8.join(this.#metadataRoot(), "staging");
+      const recordSource = await readFile8(recordPath, "utf8");
+      const stagingRoot = path11.join(this.#metadataRoot(), "staging");
       const journal = {
         schemaVersion: 1,
         kind: "managed-uninstall",
@@ -12016,11 +11784,11 @@ var StashLifecycleImplementation = class {
         managedExisted,
         managedPath,
         recordPath,
-        treeTombstone: path8.join(
+        treeTombstone: path11.join(
           stagingRoot,
           `uninstall-${operationId}-tree`
         ),
-        recordTombstone: path8.join(
+        recordTombstone: path11.join(
           stagingRoot,
           `uninstall-${operationId}-record.json`
         ),
@@ -12031,7 +11799,7 @@ var StashLifecycleImplementation = class {
       let committed = false;
       try {
         const commitRecord = await this.#readRecord(record.name);
-        if (!commitRecord || !isDeepStrictEqual(commitRecord, record) || sha256(await readFile6(recordPath, "utf8")) !== journal.recordHash) {
+        if (!commitRecord || !isDeepStrictEqual(commitRecord, record) || sha256(await readFile8(recordPath, "utf8")) !== journal.recordHash) {
           throw new StashError(
             "managed-version-conflict",
             `Managed skill "${record.name}" changed before uninstall could commit.`,
@@ -12055,7 +11823,7 @@ var StashLifecycleImplementation = class {
               3
             );
           }
-          await rename2(managedPath, journal.treeTombstone);
+          await rename3(managedPath, journal.treeTombstone);
           await this.#advanceJournal(journal, "tree-tombstoned");
           const movedTreeHash = await this.#journalTreeHash(
             journal.treeTombstone,
@@ -12076,7 +11844,7 @@ var StashLifecycleImplementation = class {
           );
         }
         const finalRecord = await this.#readRecord(record.name);
-        if (!finalRecord || !isDeepStrictEqual(finalRecord, record) || sha256(await readFile6(recordPath, "utf8")) !== journal.recordHash) {
+        if (!finalRecord || !isDeepStrictEqual(finalRecord, record) || sha256(await readFile8(recordPath, "utf8")) !== journal.recordHash) {
           throw new StashError(
             "managed-version-conflict",
             `Managed metadata for "${record.name}" changed during uninstall.`,
@@ -12090,7 +11858,7 @@ var StashLifecycleImplementation = class {
             3
           );
         }
-        await rename2(recordPath, journal.recordTombstone);
+        await rename3(recordPath, journal.recordTombstone);
         await this.#advanceJournal(journal, "record-tombstoned");
         await this.#journalRecordHash(
           journal,
@@ -12119,6 +11887,16 @@ var StashLifecycleImplementation = class {
         const cleanupWarning = `Uninstall committed, but verified cleanup remains for recovery: ${String(error)}`;
         warning = warning ? `${warning} ${cleanupWarning}` : cleanupWarning;
       }
+      try {
+        const classifications = await readClassifications(this.#managedRoot);
+        const ref = `managed:${record.name}`;
+        if (Object.hasOwn(classifications.skills, ref)) {
+          delete classifications.skills[ref];
+          await writeClassifications(this.#managedRoot, classifications);
+        }
+      } catch (error) {
+        warning = `${warning ?? ""} Classification cleanup needs review: ${String(error)}`.trim();
+      }
       return {
         status: "uninstalled",
         name: record.name,
@@ -12130,7 +11908,7 @@ var StashLifecycleImplementation = class {
     });
   }
   async status(request = {}) {
-    const recordsRoot = path8.join(this.#metadataRoot(), "records");
+    const recordsRoot = path11.join(this.#metadataRoot(), "records");
     let names;
     const hasRecordsRoot = await this.#hasSafeRecordsRoot();
     if (request.name) {
@@ -12155,7 +11933,7 @@ var StashLifecycleImplementation = class {
       if (!record) {
         continue;
       }
-      const managedPath = path8.join(this.#managedRoot, name);
+      const managedPath = path11.join(this.#managedRoot, name);
       const managedType = await pathType(managedPath);
       let storeState = managedType === "missing" ? "missing" : "stored";
       let storeIntegrity = managedType === "directory" ? "unknown" : managedType === "missing" ? "unknown" : "drifted";
@@ -12255,17 +12033,18 @@ var StashLifecycleImplementation = class {
 async function createStashLifecycle(options = {}) {
   const effectiveOptions = options.catalogs && !options.managedRoot ? {
     ...options,
-    managedRoot: path8.resolve(
+    managedRoot: path11.resolve(
       process.env.STASH_MANAGED_HOME ?? platformManagedPath()
     )
   } : options;
   const loaded = await loadConfiguration(effectiveOptions);
-  const managedRoot = path8.resolve(
+  const managedRoot = path11.resolve(
     loaded.configuration.managedRoot ?? options.managedRoot ?? platformManagedPath()
   );
   return new StashLifecycleImplementation(
     managedRoot,
-    options.now ?? Date.now
+    options.now ?? Date.now,
+    effectiveOptions
   );
 }
 
@@ -12312,10 +12091,10 @@ function numberFlag(args, name) {
     return void 0;
   }
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 200) {
     throw new StashError(
       "invalid-argument",
-      `--${name} must be a number.`,
+      `--${name} must be an integer between 1 and 200.`,
       2
     );
   }
@@ -12393,15 +12172,12 @@ function lifecycleTarget(args) {
   };
 }
 function printJson(value) {
-  process.stdout.write(`${JSON.stringify(value, null, 2)}
+  process.stdout.write(`${JSON.stringify(value)}
 `);
 }
 function printResolve(result) {
   if (result.status === "no-match") {
-    process.stdout.write(
-      result.totalPossible > 0 ? `No materially relevant skills. ${result.totalPossible} possible match(es) were excluded.
-` : "No matching skills.\n"
-    );
+    process.stdout.write("No matching skills.\n");
     return;
   }
   if (result.status !== "ok" && result.status !== "ambiguous-exact") {
@@ -12409,9 +12185,8 @@ function printResolve(result) {
 `);
     return;
   }
-  process.stdout.write(
-    `${result.totalRelevant} relevant skill(s)` + (result.totalPossible > 0 ? `, ${result.totalPossible} possible match(es)` : "") + "\n"
-  );
+  process.stdout.write(`${result.total} skill(s)
+`);
   let currentScope = "";
   for (const match of result.matches) {
     const group = match.group ?? "(ungrouped)";
@@ -12423,8 +12198,7 @@ function printResolve(result) {
 ${scope}
 `);
     }
-    const tier = match.relevance ? ` [${match.relevance.tier}]` : "";
-    process.stdout.write(`- ${match.name}${tier} \u2014 ${match.description}
+    process.stdout.write(`- ${match.name} \u2014 ${match.description}
 `);
     process.stdout.write(`  ref: ${match.ref}
 `);
@@ -12434,6 +12208,77 @@ ${scope}
 next_cursor: ${result.page.nextCursor}
 `);
   }
+}
+function listJson(result, view) {
+  if (view === "full") return result;
+  return {
+    schemaVersion: result.schemaVersion,
+    view,
+    status: result.status,
+    mode: result.mode,
+    total: result.total,
+    ...view === "summary" ? { summary: result.summary } : {
+      page: result.page,
+      matches: result.matches.map((match) => ({
+        name: match.name,
+        ref: match.ref,
+        description: match.description,
+        ...match.group ? { group: match.group } : {},
+        source: {
+          label: sourceDisplayName(match.source),
+          ...match.source?.url ? { url: match.source.url } : {}
+        }
+      }))
+    },
+    diagnostics: result.diagnostics
+  };
+}
+function printList(result, view) {
+  if (result.status !== "ok") {
+    printResolve(result);
+    return;
+  }
+  process.stdout.write(`Stash catalog: ${result.total} skill(s)
+`);
+  if (view !== "compact") {
+    const summary = result.summary;
+    process.stdout.write(`Catalogs: ${summary.catalogs.map((item) => `${item.name} ${item.count}`).join(" | ")}
+`);
+    process.stdout.write(`
+Source packages (${summary.sources.length})
+`);
+    for (const source of summary.sources) {
+      process.stdout.write(`- ${source.label} \u2014 ${source.count} [${source.catalogs.join(", ")}]
+`);
+      if (source.url) process.stdout.write(`  ${source.url}
+`);
+    }
+    process.stdout.write(`
+Categories (${summary.groups.length})
+`);
+    for (const group of summary.groups) process.stdout.write(`- ${group.name} \u2014 ${group.count}
+`);
+  }
+  if (view === "summary") return;
+  process.stdout.write(`
+Skills on this page (${result.page.size}/${result.total})
+`);
+  let currentScope = "";
+  for (const match of result.matches) {
+    const scope = `${sourceDisplayName(match.source)} / ${match.catalogId} / ${match.group ?? "(ungrouped)"}`;
+    if (scope !== currentScope) {
+      currentScope = scope;
+      process.stdout.write(`
+${scope}
+`);
+    }
+    process.stdout.write(`- ${match.name}${view === "compact" ? ` [${match.ref}] \u2014 ${match.description}` : ""}
+`);
+  }
+  if (result.page.nextCursor) process.stdout.write(`
+next_cursor: ${result.page.nextCursor}
+`);
+  process.stdout.write("\nTip: filter with --source <owner/repo> or --group <category>; use exact/read for full details.\n");
 }
 function printLifecycle(result) {
   process.stdout.write(
@@ -12465,37 +12310,36 @@ ${result.managedPath}
   }
 }
 function usage() {
-  return `Stash \u2014 on-demand search for local Agent Skills
+  return `Stash \u2014 an on-demand skill shelf. The host agent judges relevance.
 
-Usage:
-  stash exact <name> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--json]
-  stash search <query> [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--include-possible] [--json]
-  stash list [--source <id|name|url>] [--group <group>] [--catalog <id>] [--cursor <token>] [--json]
-  stash read <ref> [--resource <path>] [--format content|path|json]
-  stash index [--catalog <id>] [--json]
+Read:
+  stash list [--group <category>] [--source <id|owner/repo|url>] [--text <literal>] [--view compact|full|summary] [--page-size <n>] [--cursor <token>] [--json]
+  stash exact <name|ref> [--catalog <id>] [--json]
+  stash read <ref> [--resource <path>] [--expected-hash <sha256:...>] [--format content|path|json]
+  stash refresh [--json]
   stash doctor [--catalog <id>] [--json]
-  stash install <local-skill-dir> [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
-  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <revision>] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
-  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <revision>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+
+Manage:
+  stash install <local-skill-dir> [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash classify <ref> --expected-hash <sha256:...> --group <category> --purpose <one-line purpose> [--json]
+  stash update <local-skill-dir> --expected-tree-hash <sha256:...> [--expected-revision <sha>] [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
+  stash archive <standalone-skill-dir|name> --host <host> [--scope user] [--source-url <url>] [--revision <sha>] [--repository-path <path>] [--tracking-ref <ref>] [--json]
   stash activate <name> --host <host> [--scope user] [--json]
   stash deactivate <name> --host <host> [--scope user] [--json]
   stash uninstall <name> [--json]
   stash status [name] [--json]
 
-Configuration:
-  --config <path>       Override STASH_CONFIG/platform config.
-  --root <path>         Use one catalog without a config file.
-  --root-id <id>        Catalog id used with --root (default: default).
-  --cache-dir <path>    Override STASH_CACHE_DIR/platform cache.
-  --managed-root <path> Override STASH_MANAGED_HOME/platform managed store.
+Options:
+  --config <path> --root <path> --root-id <id> --cache-dir <path> --managed-root <path>
+  --catalog and --group may be repeated (OR within each filter).
+  Hosts: codex, claude-code, antigravity-ide, antigravity-cli; user scope only.
 
-Lifecycle targeting:
-  --host <host>         codex, claude-code, antigravity-ide, or antigravity-cli.
-  --scope <scope>       user (default); workspace is rejected in this release.
-
-Result pagination never caps the total relevant result set.
-Lifecycle commands manage only the Stash-owned store and explicitly selected
-standalone skills. They never mutate external catalogs, plugins, or host settings.
+List defaults to compact cards, 50 per page; pagination never caps the total.
+--text is a case-insensitive literal substring, not semantic search.
+Summary gives complete category/source counts without loading skill instructions.
+Refresh after editing registered folders outside Stash; lifecycle writes invalidate the cache.
+Classification changes only Stash metadata, never skill content or activation.
+No network, secondary LLM, relevance scoring or automatic activation.
 `;
 }
 async function main() {
@@ -12507,8 +12351,21 @@ async function main() {
   const catalog = await createStashCatalog(createOptions(args));
   const catalogIds = flags(args, "catalog");
   const sources = flags(args, "source");
-  const group = flag(args, "group");
+  const groups = flags(args, "group");
   const json = booleanFlag(args, "json");
+  const common = ["config", "root", "root-id", "cache-dir", "managed-root", "json"];
+  const readFlags = {
+    exact: ["catalog", "source", "group"],
+    list: ["catalog", "source", "group", "text", "view", "page-size", "cursor"],
+    read: ["resource", "expected-hash", "format"],
+    refresh: [],
+    doctor: ["catalog"],
+    classify: ["expected-hash", "group", "purpose"]
+  };
+  if (readFlags[args.command]) rejectUnknownFlags(args, /* @__PURE__ */ new Set([...common, ...readFlags[args.command]]));
+  if (["list", "refresh", "doctor"].includes(args.command) && args.positionals.length) {
+    throw new StashError("invalid-argument", `${args.command} does not accept positional arguments; use explicit filters.`, 2);
+  }
   switch (args.command) {
     case "exact": {
       const name = args.positionals.join(" ").trim();
@@ -12524,47 +12381,31 @@ async function main() {
         name,
         ...catalogIds ? { catalogIds } : {},
         ...sources ? { sources } : {},
-        ...group ? { group } : {}
-      });
-      json ? printJson(result) : printResolve(result);
-      return;
-    }
-    case "search": {
-      const query = args.positionals.join(" ").trim();
-      if (!query) {
-        throw new StashError(
-          "invalid-argument",
-          "search requires a query.",
-          2
-        );
-      }
-      const cursor = flag(args, "cursor");
-      const pageSize = numberFlag(args, "page-size");
-      const result = await catalog.resolve({
-        kind: "search",
-        query,
-        ...catalogIds ? { catalogIds } : {},
-        ...sources ? { sources } : {},
-        ...group ? { group } : {},
-        ...cursor ? { cursor } : {},
-        ...pageSize !== void 0 ? { pageSize } : {},
-        ...booleanFlag(args, "include-possible") ? { includePossible: true } : {}
+        ...groups ? { groups } : {}
       });
       json ? printJson(result) : printResolve(result);
       return;
     }
     case "list": {
+      const view = flag(args, "view") ?? "compact";
+      if (view !== "full" && view !== "compact" && view !== "summary") {
+        throw new StashError("invalid-argument", "--view must be full, compact, or summary.", 2);
+      }
       const cursor = flag(args, "cursor");
-      const pageSize = numberFlag(args, "page-size");
+      if (view === "summary" && cursor) {
+        throw new StashError("invalid-argument", "--view summary does not accept --cursor.", 2);
+      }
+      const pageSize = view === "summary" ? 1 : numberFlag(args, "page-size") ?? void 0;
       const result = await catalog.resolve({
         kind: "list",
+        ...flag(args, "text") !== void 0 ? { text: flag(args, "text") } : {},
         ...catalogIds ? { catalogIds } : {},
         ...sources ? { sources } : {},
-        ...group ? { group } : {},
+        ...groups ? { groups } : {},
         ...cursor ? { cursor } : {},
         ...pageSize !== void 0 ? { pageSize } : {}
       });
-      json ? printJson(result) : printResolve(result);
+      json ? printJson(listJson(result, view)) : printList(result, view);
       return;
     }
     case "read": {
@@ -12601,10 +12442,9 @@ async function main() {
       }
       return;
     }
-    case "index": {
+    case "refresh": {
       const result = await catalog.refresh({
-        ...catalogIds ? { catalogIds } : {},
-        force: booleanFlag(args, "force")
+        ...catalogIds ? { catalogIds } : {}
       });
       if (json) {
         printJson(result);
@@ -12623,8 +12463,7 @@ async function main() {
     }
     case "doctor": {
       const result = await catalog.doctor({
-        ...catalogIds ? { catalogIds } : {},
-        verifyHashes: booleanFlag(args, "verify-hashes")
+        ...catalogIds ? { catalogIds } : {}
       });
       if (json) {
         printJson(result);
@@ -12639,15 +12478,32 @@ async function main() {
 `);
           }
         }
+        for (const warning of result.warnings ?? []) {
+          process.stdout.write(`  - ${warning.code}: ${warning.message}
+`);
+        }
+        if (result.coverage) {
+          process.stdout.write(`Coverage: ${result.coverage.total} searchable, ${result.coverage.uncategorized.length} uncategorized, ${result.coverage.unattributed.length} unattributed (refs in --json)
+`);
+        }
       }
       if (result.status === "failed") {
         process.exitCode = 4;
       }
       return;
     }
-    case "install":
-    case "import":
-    case "add": {
+    case "classify": {
+      const ref = args.positionals.join(" ").trim();
+      const contentHash = flag(args, "expected-hash") ?? "";
+      const group = flag(args, "group") ?? "";
+      const purpose = flag(args, "purpose") ?? "";
+      const lifecycle = await createStashLifecycle(createOptions(args));
+      const result = await lifecycle.classify({ ref, contentHash, group, purpose });
+      json ? printJson(result) : process.stdout.write(`${ref}: classified
+`);
+      return;
+    }
+    case "install": {
       const source = args.positionals.join(" ").trim();
       if (!source) {
         throw new StashError(
@@ -12665,13 +12521,13 @@ async function main() {
       }
       const lifecycle = await createStashLifecycle(createOptions(args));
       const sourceUrl = flag(args, "source-url");
-      const revision = flag(args, "revision");
+      const revision2 = flag(args, "revision");
       const repositoryPath = flag(args, "repository-path");
       const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.install({
         source,
         ...sourceUrl ? { sourceUrl } : {},
-        ...revision ? { revision } : {},
+        ...revision2 ? { revision: revision2 } : {},
         ...repositoryPath ? { repositoryPath } : {},
         ...trackingRef ? { trackingRef } : {}
       });
@@ -12704,7 +12560,7 @@ async function main() {
       }
       const lifecycle = await createStashLifecycle(createOptions(args));
       const sourceUrl = flag(args, "source-url");
-      const revision = flag(args, "revision");
+      const revision2 = flag(args, "revision");
       const expectedRevision = flag(args, "expected-revision");
       const repositoryPath = flag(args, "repository-path");
       const trackingRef = flag(args, "tracking-ref");
@@ -12713,7 +12569,7 @@ async function main() {
         expectedTreeHash,
         ...expectedRevision ? { expectedRevision } : {},
         ...sourceUrl ? { sourceUrl } : {},
-        ...revision ? { revision } : {},
+        ...revision2 ? { revision: revision2 } : {},
         ...repositoryPath ? { repositoryPath } : {},
         ...trackingRef ? { trackingRef } : {}
       });
@@ -12732,14 +12588,14 @@ async function main() {
       const lifecycle = await createStashLifecycle(createOptions(args));
       const target = lifecycleTarget(args);
       const sourceUrl = flag(args, "source-url");
-      const revision = flag(args, "revision");
+      const revision2 = flag(args, "revision");
       const repositoryPath = flag(args, "repository-path");
       const trackingRef = flag(args, "tracking-ref");
       const result = await lifecycle.archive({
         source,
         target,
         ...sourceUrl ? { sourceUrl } : {},
-        ...revision ? { revision } : {},
+        ...revision2 ? { revision: revision2 } : {},
         ...repositoryPath ? { repositoryPath } : {},
         ...trackingRef ? { trackingRef } : {}
       });

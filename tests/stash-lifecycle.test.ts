@@ -274,7 +274,11 @@ test("uninstall preserves linked and non-directory managed paths", async () => {
 });
 
 test("uninstall recovery restores before commit and finishes after commit", async () => {
-  for (const stage of ["record-tombstoned", "cleanup-authorized"] as const) {
+  for (const {stage, drift} of [
+    {stage: "record-tombstoned", drift: false},
+    {stage: "cleanup-authorized", drift: false},
+    {stage: "cleanup-authorized", drift: true},
+  ] as const) {
     const fixture = await lifecycleFixture();
     const lifecycle = await createStashLifecycle({
       catalogs: [],
@@ -310,7 +314,7 @@ test("uninstall recovery restores before commit and finishes after commit", asyn
     const recordSource = await readFile(recordPath, "utf8");
     await rename(installed.managedPath, treeTombstone);
     await rename(recordPath, recordTombstone);
-    if (stage === "cleanup-authorized") {
+    if (drift) {
       await rm(path.join(treeTombstone, "references", "guide.md"), {
         force: false,
       });
@@ -340,6 +344,13 @@ test("uninstall recovery restores before commit and finishes after commit", asyn
       "other-skill",
     );
 
+    if (drift) {
+      await assert.rejects(lifecycle.install({source: otherSource}), {code: "lifecycle-recovery-conflict"});
+      await access(treeTombstone);
+      await access(recordTombstone);
+      await access(journalPath);
+      continue;
+    }
     await lifecycle.install({ source: otherSource });
 
     await assert.rejects(access(journalPath));
@@ -1409,6 +1420,7 @@ test("managed projection folds a preserved catalog source without hiding scoped 
     "source drift\n",
     "utf8",
   );
+  await catalog.refresh(); // Outside edits are picked up explicitly, not on every lookup.
   const drifted = await catalog.resolve({ kind: "exact", name: "rare-skill" });
   assert.equal(drifted.status, "ambiguous-exact");
   assert.equal(drifted.matches.length, 2);
@@ -1681,6 +1693,31 @@ test("archive recovery preserves a tombstone not bound to its operation", async 
   await access(journalPath);
 });
 
+test("authorized archive cleanup preserves a changed tombstone", async () => {
+  const fixture = await lifecycleFixture();
+  const lifecycle = await createStashLifecycle({
+    catalogs: [], managedRoot: fixture.managedRoot,
+    lifecycleHome: path.join(fixture.base, "home"),
+  });
+  const installed = await lifecycle.install({source: fixture.sourceRoot});
+  const operationId = "00000000-0000-4000-8000-000000000018";
+  const tombstone = path.join(fixture.base, `.stash-archive-rare-skill-${operationId}`);
+  await rename(fixture.sourceRoot, tombstone);
+  await writeFile(path.join(tombstone, "references", "guide.md"), "user changes\n");
+  const journalPath = path.join(fixture.managedRoot, ".stash", "journal", `${operationId}.json`);
+  await writeFile(journalPath, JSON.stringify({
+    schemaVersion: 2, operationId, stage: "cleanup-authorized",
+    source: fixture.sourceRoot, tombstone, name: "rare-skill",
+    treeHash: installed.treeHash, managedPath: installed.managedPath,
+    managedExistedBefore: true, createdAt: new Date().toISOString(),
+  }));
+  const otherSource = await createStandaloneSkill(path.join(fixture.base, "other"), "other-skill");
+  await assert.rejects(lifecycle.install({source: otherSource}), {code: "lifecycle-recovery-conflict"});
+  assert.equal(await readFile(path.join(tombstone, "references", "guide.md"), "utf8"), "user changes\n");
+  await access(journalPath);
+  assert.equal((await lifecycle.status({name: "rare-skill"})).skills[0]?.store.integrity, "verified");
+});
+
 test("the next mutation rolls back an update interrupted before record commit", async () => {
   const fixture = await lifecycleFixture();
   const lifecycle = await createStashLifecycle({
@@ -1918,8 +1955,11 @@ test("recovery removes an operation-owned partial stage without inspecting it", 
   );
 });
 
-test("authorized update cleanup is idempotent after a partial recursive delete", async () => {
-  for (const committed of [false, true]) {
+test("authorized update cleanup verifies the discard and remains idempotent", async () => {
+  for (const {committed, drift} of [
+    {committed: false, drift: false}, {committed: true, drift: false},
+    {committed: false, drift: true}, {committed: true, drift: true},
+  ]) {
     const fixture = await lifecycleFixture();
     const lifecycle = await createStashLifecycle({
       catalogs: [],
@@ -1955,14 +1995,8 @@ test("authorized update cleanup is idempotent after a partial recursive delete",
       stagingRoot,
       `update-${operationId}-discard`,
     );
-    await mkdir(path.join(discardPath, "partially-removed"), {
-      recursive: true,
-    });
-    await writeFile(
-      path.join(discardPath, "partially-removed", "remainder.tmp"),
-      "remainder",
-      "utf8",
-    );
+    await cp(committed ? fixture.sourceRoot : replacement, discardPath, {recursive: true});
+    if (drift) await writeFile(path.join(discardPath, "references", "guide.md"), "changed after cleanup authorization\n");
     if (committed) {
       await rm(installed.managedPath, { recursive: true, force: false });
       await rename(alternate.managedPath, installed.managedPath);
@@ -2009,6 +2043,12 @@ test("authorized update cleanup is idempotent after a partial recursive delete",
       "utf8",
     );
 
+    if (drift) {
+      await assert.rejects(lifecycle.install({source: committed ? replacement : fixture.sourceRoot}), {code: "lifecycle-recovery-conflict"});
+      await access(discardPath);
+      await access(journalPath);
+      continue;
+    }
     const repeated = await lifecycle.install({
       source: committed ? replacement : fixture.sourceRoot,
     });
@@ -2019,6 +2059,7 @@ test("authorized update cleanup is idempotent after a partial recursive delete",
     );
     await assert.rejects(access(discardPath));
     await assert.rejects(access(journalPath));
+    assert.equal((await lifecycle.install({source: committed ? replacement : fixture.sourceRoot})).status, "already-stored");
   }
 });
 

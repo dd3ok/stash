@@ -13,6 +13,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import YAML from "yaml";
+import { recyclePath } from "../dist/internal/recycle-bin.js";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,6 +24,127 @@ const bundledCli = path.join(
   "scripts",
   "stash.mjs",
 );
+
+test("the CLI rejects undocumented installation aliases", async () => {
+  for (const command of ["add", "import", "search", "index"]) {
+    await assert.rejects(execFileAsync(process.execPath, [bundledCli, command, "unused"]),
+      (error) => error.code === 2);
+  }
+});
+
+test("list views preserve complete inventory and scope without detailed payloads", async (t) => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-list-views-test-"));
+  t.after(() => recyclePath(temp));
+  const catalog = path.join(temp, "catalog");
+  for (const [group, name, owner] of [
+    ["engineering", "review", "first"],
+    ["frontend", "review", "second"],
+    ["engineering", "diagnose", "first"],
+  ]) {
+    const skill = path.join(catalog, group, name);
+    await mkdir(skill, { recursive: true });
+    const description = name === "diagnose"
+      ? "Diagnose a reproducible issue using evidence. ".repeat(10).trim()
+      : "A complete fixture description.";
+    await writeFile(path.join(skill, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\nPRIVATE-BODY:${group}/${name}\n`);
+    await writeFile(path.join(skill, "stash.meta.yaml"), `schemaVersion: 1\nsource:\n  url: https://github.com/${owner}/skills\n`);
+  }
+  const args = [bundledCli, "list", "--root", catalog, "--cache-dir", path.join(temp, "cache"), "--managed-root", path.join(temp, "managed")];
+  const run = async (...extra) => JSON.parse((await execFileAsync(process.execPath, [...args, ...extra, "--json"])).stdout);
+  const full = await run("--view", "full");
+  assert.equal(full.view, undefined);
+  assert.ok(full.matches.every((match) => match.description.length <= 240));
+  const overview = await run("--view", "summary");
+  assert.equal(overview.view, "summary");
+  assert.equal(overview.total, 3);
+  assert.deepEqual(overview.summary, full.summary);
+  assert.equal(overview.matches, undefined);
+  assert.equal(overview.page, undefined);
+
+  const first = await run("--view", "compact", "--page-size", "1");
+  assert.equal(first.summary, undefined);
+  assert.equal(first.matches[0].description, full.matches[0].description);
+  assert.equal(first.matches[0].contentHash, undefined);
+  assert.ok(first.matches[0].source.url);
+  assert.equal(first.total, 3);
+  const members = [...first.matches];
+  let cursor = first.page.nextCursor;
+  while (cursor) {
+    const page = await run("--view", "compact", "--page-size", "1", "--cursor", cursor);
+    assert.equal(page.total, 3);
+    members.push(...page.matches);
+    cursor = page.page.nextCursor;
+  }
+  assert.deepEqual(members.map((item) => item.ref), full.matches.map((item) => item.ref));
+  assert.equal(new Set(members.map((item) => item.ref)).size, 3);
+  assert.equal(members.filter((item) => item.name === "review").length, 2);
+  assert.deepEqual(members.map((item) => item.description), full.matches.map((item) => item.description));
+  assert.ok(members.find((item) => item.name === "diagnose").description.endsWith("…"));
+  assert.doesNotMatch(JSON.stringify(members), /PRIVATE-BODY/u);
+
+  // The displayed ref identifies the choice even when exact lookup is ambiguous.
+  const chosen = members.find((item) => item.ref === "default:frontend/review");
+  const exact = JSON.parse((await execFileAsync(process.execPath, [
+    bundledCli, "exact", chosen.name, ...args.slice(2), "--json",
+  ])).stdout);
+  assert.equal(exact.status, "ambiguous-exact");
+  const metadata = exact.matches.find((item) => item.ref === chosen.ref);
+  const loaded = JSON.parse((await execFileAsync(process.execPath, [
+    bundledCli, "read", metadata.ref, ...args.slice(2),
+    "--expected-hash", metadata.contentHash, "--format", "json",
+  ])).stdout);
+  assert.equal(loaded.status, "ok");
+  assert.match(loaded.content, /PRIVATE-BODY:frontend\/review/u);
+  assert.doesNotMatch(loaded.content, /PRIVATE-BODY:engineering/u);
+  const scoped = await run("--view", "compact", "--source", "first/skills", "--group", "engineering");
+  assert.equal(scoped.total, 2);
+  assert.equal(scoped.page.size, 2);
+  assert.ok(scoped.matches.every((item) => item.source.url === "https://github.com/first/skills"));
+  const missing = await run("--view", "compact", "--source", "missing/skills");
+  assert.equal(missing.status, "no-match");
+  assert.deepEqual(missing.matches, []);
+  const stale = await run("--view", "compact", "--cursor", first.page.nextCursor, "--group", "frontend");
+  assert.equal(stale.status, "cursor-stale");
+  assert.deepEqual(stale.matches, []);
+
+  const human = (await execFileAsync(process.execPath, [...args, "--view", "compact"])).stdout;
+  assert.match(human, /default:engineering\/review/u);
+  assert.match(human, /A complete fixture description\./u);
+  assert.doesNotMatch(human, /PRIVATE-BODY/u);
+  assert.doesNotMatch(human, /Source packages|Categories \(/u);
+  const humanSummary = (await execFileAsync(process.execPath, [...args, "--view", "summary"])).stdout;
+  assert.match(humanSummary, /Source packages/u);
+  assert.doesNotMatch(humanSummary, /Skills on this page|next_cursor/u);
+  for (const invalid of [["--view", "unknown"], ["--view", "summary", "--cursor", first.page.nextCursor], ["--page-size", "0"], ["--page-size", "1.5"], ["ignored-query"], ["--include-possible"]]) {
+    await assert.rejects(execFileAsync(process.execPath, [...args, ...invalid]), (error) => error.code === 2);
+  }
+});
+
+test("CLI filtered lists paginate compact cards without capping total results", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "stash-search-page-test-"));
+  const catalog = path.join(temp, "catalog");
+  const description = `${"Audit a focused interface component and explain its findings. ".repeat(5)}Never use for backend-only work.`;
+  for (let index = 0; index < 12; index++) {
+    const skill = path.join(catalog, `audit-${index}`);
+    await mkdir(skill, { recursive: true });
+    await writeFile(path.join(skill, "SKILL.md"), `---\nname: audit-${index}\ndescription: ${description}\n---\n`);
+  }
+  const args = [bundledCli, "list", "--text", "audit", "--view", "full", "--page-size", "10", "--root", catalog, "--cache-dir", path.join(temp, "cache"), "--json"];
+  const first = JSON.parse((await execFileAsync(process.execPath, args)).stdout);
+  assert.equal(first.total, 12);
+  assert.equal(first.page.size, 10);
+  assert.ok(first.matches[0].description.length <= 240);
+  const second = JSON.parse((await execFileAsync(process.execPath, [...args, "--cursor", first.page.nextCursor])).stdout);
+  assert.equal(second.total, 12);
+  assert.equal(second.page.size, 2);
+  assert.equal(second.page.nextCursor, undefined);
+  assert.equal(new Set([...first.matches, ...second.matches].map((item) => item.ref)).size, 12);
+  const single = JSON.parse((await execFileAsync(process.execPath, [...args, "--page-size", "1"])).stdout);
+  assert.equal(single.page.size, 1);
+  const help = (await execFileAsync(process.execPath, [bundledCli, "help"])).stdout;
+  assert.match(help, /--page-size/u);
+  assert.match(help, /--expected-hash/u);
+});
 
 test("bundled skill CLI performs exact lookup without node_modules at runtime", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-dist-test-"));
@@ -302,7 +424,7 @@ test("human list output keeps ID-less sources in distinct blocks", async () => {
   assert.ok(stdout.indexOf("- charlie") < stdout.indexOf(sourceB));
 });
 
-test("license-only metadata retains the legacy catalog scope", async () => {
+test("license-only metadata does not invent a source identity", async () => {
   const temp = await mkdtemp(path.join(tmpdir(), "stash-license-source-test-"));
   const catalog = path.join(temp, "catalog");
   const skill = path.join(catalog, "license-only-sample");
@@ -337,11 +459,11 @@ test("npm package entrypoints match the compiled layout", async () => {
   assert.equal(typeof library.createStashLifecycle, "function");
 
   const { stdout } = await execFileAsync(process.execPath, [cli, "help"]);
-  assert.match(stdout, /stash exact <name>/u);
+  assert.match(stdout, /stash exact <name\|ref>/u);
   assert.match(stdout, /stash install <local-skill-dir>/u);
   assert.match(stdout, /stash update <local-skill-dir>/u);
   assert.match(stdout, /stash uninstall <name>/u);
-  assert.match(stdout, /--source <id\|name\|url>/u);
+  assert.match(stdout, /--source <id\|owner\/repo\|url>/u);
 
   const { stdout: flagHelp } = await execFileAsync(process.execPath, [
     cli,
@@ -374,6 +496,7 @@ test("distribution metadata uses one Stash identity and version", async () => {
     ),
   );
   assert.equal(openaiMetadata.interface.display_name, "Stash");
+  assert.equal(openaiMetadata.policy.allow_implicit_invocation, false);
 
   const claudeMarketplace = JSON.parse(
     await readFile(

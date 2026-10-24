@@ -1,5 +1,5 @@
-export const RESULT_SCHEMA_VERSION = 1 as const;
-export const INDEX_SCHEMA_VERSION = 2 as const;
+export const RESULT_SCHEMA_VERSION = 2 as const;
+export const INDEX_SCHEMA_VERSION = 4 as const;
 
 export type Vendor = "codex" | "claude-code" | "antigravity";
 export type LifecycleHost =
@@ -10,7 +10,6 @@ export type LifecycleHost =
 export type LifecycleScope = "user" | "workspace";
 export type CompatibilityState = "supported" | "partial" | "unsupported" | "unknown";
 export type TrustState = "trusted" | "reviewed" | "unreviewed" | "quarantined";
-export type RelevanceTier = "exact" | "strong" | "material" | "possible";
 
 export interface VendorCompatibility {
   codex: CompatibilityState;
@@ -23,6 +22,8 @@ export interface CatalogSource {
   displayName?: string;
   url?: string;
   revision?: string;
+  repositoryPath?: string;
+  trackingRef?: string;
   license?: string;
 }
 
@@ -47,12 +48,8 @@ export interface SkillRecord {
   group?: string;
   name: string;
   description: string;
+  purpose?: string;
   relativeSkillFile: string;
-  aliases: string[];
-  tags: string[];
-  intents: string[];
-  positiveExamples: string[];
-  negativeExamples: string[];
   compatibility: VendorCompatibility;
   trust: TrustState;
   source: CatalogSource;
@@ -94,13 +91,22 @@ export interface CatalogRegistration {
 
 export interface StashDefaults {
   pageSize: number;
-  cacheTtlMs: number;
-  materialScoreThreshold: number;
-  locale: string;
+}
+
+/** Local classification, bound to the exact SKILL.md that was inspected. */
+export interface SkillClassification {
+  contentHash: string;
+  group: string;
+  purpose: string;
+  source?: Pick<CatalogSource, "id" | "displayName" | "url">;
+}
+
+export interface ClassifyRequest extends SkillClassification {
+  ref: string;
 }
 
 export interface StashConfiguration {
-  version: 1;
+  version: 2;
   catalogs: CatalogRegistration[];
   defaults: StashDefaults;
   managedRoot?: string;
@@ -120,7 +126,7 @@ export type CreateStashLifecycleOptions = CreateStashCatalogOptions;
 export interface ResolveFilters {
   catalogIds?: string[];
   sources?: string[];
-  group?: string;
+  groups?: string[];
 }
 
 export type ResolveRequest =
@@ -129,30 +135,11 @@ export type ResolveRequest =
       name: string;
     })
   | (ResolveFilters & {
-      kind: "search";
-      query: string;
-      cursor?: string;
-      pageSize?: number;
-      includePossible?: boolean;
-    })
-  | (ResolveFilters & {
       kind: "list";
+      text?: string;
       cursor?: string;
       pageSize?: number;
     });
-
-export interface RelevanceReason {
-  kind:
-    | "name"
-    | "alias"
-    | "intent"
-    | "tag"
-    | "description"
-    | "example"
-    | "source"
-    | "typo";
-  value: string;
-}
 
 export interface ResolvedSkill {
   ref: string;
@@ -166,11 +153,6 @@ export interface ResolvedSkill {
   contentHash: string;
   managedSkillId?: string;
   relatedCopies?: RelatedSkillCopy[];
-  relevance?: {
-    tier: RelevanceTier;
-    score: number;
-    reasons: RelevanceReason[];
-  };
 }
 
 export interface ResolveResult {
@@ -182,19 +164,28 @@ export interface ResolveResult {
     | "catalog-unavailable"
     | "invalid-request"
     | "cursor-stale";
-  mode: "exact" | "search" | "list";
-  totalRelevant: number;
-  totalPossible: number;
+  mode: "exact" | "list";
+  total: number;
   page: {
     size: number;
     nextCursor?: string;
   };
+  summary?: {
+    catalogs: Array<{ name: string; count: number }>;
+    groups: Array<{ name: string; count: number }>;
+    sources: Array<{
+      label: string;
+      url?: string;
+      count: number;
+      catalogs: string[];
+      groups: string[];
+    }>;
+  };
   matches: ResolvedSkill[];
   diagnostics: {
     indexVersion: typeof INDEX_SCHEMA_VERSION;
-    stale: boolean;
+    snapshotAt?: string;
     elapsedMs: number;
-    expandedTerms?: string[];
     warnings?: CatalogWarning[];
   };
 }
@@ -226,7 +217,6 @@ export interface ReadResult {
 
 export interface RefreshRequest {
   catalogIds?: string[];
-  force?: boolean;
 }
 
 export interface RefreshResult {
@@ -241,7 +231,6 @@ export interface RefreshResult {
 
 export interface DoctorRequest {
   catalogIds?: string[];
-  verifyHashes?: boolean;
 }
 
 export interface DoctorResult {
@@ -253,6 +242,12 @@ export interface DoctorResult {
     warnings: CatalogWarning[];
     fingerprint: string;
   }>;
+  coverage?: {
+    total: number;
+    uncategorized: string[];
+    unattributed: string[];
+  };
+  warnings?: CatalogWarning[];
 }
 
 export interface StashCatalog {
@@ -409,6 +404,7 @@ export interface LifecycleStatusResult {
 }
 
 export interface StashLifecycle {
+  classify(request: ClassifyRequest): Promise<{ status: "classified"; ref: string }>;
   install(request: LifecycleInstallRequest): Promise<LifecycleMutationResult>;
   update(request: LifecycleUpdateRequest): Promise<LifecycleMutationResult>;
   archive(request: LifecycleArchiveRequest): Promise<LifecycleMutationResult>;

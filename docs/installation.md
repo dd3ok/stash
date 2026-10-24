@@ -1,5 +1,21 @@
 # Installation and local testing
 
+## Requirements
+
+Node.js 20 or later is required. Builds, tests, and lifecycle cleanup also need
+the platform's trash provider:
+
+| Platform | Required provider |
+|---|---|
+| Windows | PowerShell 7 (`pwsh.exe`) on `PATH` |
+| macOS | Foundation through `/usr/bin/osascript` |
+| Linux | `gio trash` on `PATH` and a working trash location |
+
+Listing, searching, and reading skills do not invoke the trash provider. If
+recycling is unavailable, cleanup fails without permanently deleting the path.
+
+## Build
+
 Build from the repository root:
 
 ```bash

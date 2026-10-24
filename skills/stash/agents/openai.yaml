@@ -1,7 +1,7 @@
 interface:
   display_name: "Stash"
-  short_description: "Search and safely manage inactive Agent Skills"
-  default_prompt: "Use $stash to find, update, or explicitly manage a skill in the inactive local store."
+  short_description: "Browse, choose, and manage local Agent Skills"
+  default_prompt: "Use $stash to browse my skill library and let me choose which skill to load."
 
 policy:
   allow_implicit_invocation: false

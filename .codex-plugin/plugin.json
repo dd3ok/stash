@@ -1,7 +1,7 @@
 {
   "name": "stash",
-  "version": "0.2.0",
-  "description": "Search read-only Agent Skills catalogs and explicitly manage a local inactive standalone skill store.",
+  "version": "0.3.0",
+  "description": "Browse read-only Agent Skills catalogs and explicitly manage a local inactive standalone skill store.",
   "author": {
     "name": "dd3ok",
     "url": "https://github.com/dd3ok"
@@ -15,7 +15,6 @@
     "skill-library",
     "skill-loader",
     "skill-md",
-    "skill-router",
     "progressive-disclosure",
     "manual-invocation",
     "local-first",

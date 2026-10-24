@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-- `src/`: catalog, routing, lifecycle, cache, and path behavior.
+- `src/`: catalog, lifecycle, cache, and path behavior.
 - `skills/stash/SKILL.md`: portable agent workflow.
 - `skills/stash/references/`: machine-facing CLI and configuration contracts.
 - `skills/stash/agents/openai.yaml`: Codex-only invocation policy.
@@ -24,23 +24,31 @@ Run additional checks only when their surface changes:
 
 | Change | Additional check |
 |---|---|
-| routing, scoring, or golden cases | `npm run bench` |
+| catalog retrieval or cache performance | `npm run bench` |
 | package contents or release preparation | `npm run pack:check` |
 | canonical skill metadata | `python <skill-creator>/scripts/quick_validate.py skills/stash` |
 | Codex plugin metadata or layout | `python <plugin-creator>/scripts/validate_plugin.py .` and the generated Codex adapter |
 | vendor support claim | fresh session on the named vendor binary and record its version |
 
-The Python validators require PyYAML. On Windows, set `PYTHONUTF8=1` when the
-selected Python environment uses a legacy code page.
+The Python validators require PyYAML. On Windows, set `PYTHONUTF8=1` for UTF-8
+validation output.
 
-The benchmark is diagnostic evidence for routing changes. Do not use its timing
-as a portable latency claim without recording hardware and catalog shape.
+The benchmark reports local lookup timings and serialized bytes, not token
+counts or semantic accuracy. Record catalog size and machine context before
+comparing results.
 
-## Routing changes
+## Retrieval and classification changes
 
-Update `tests/routing-golden.test.ts` with the real failing case, a nearby
-negative, and a no-match case. Cover pagination when the relevant set changes.
-Prefer metadata or weight changes over a new routing subsystem.
+Test literal filters, exact refs, cross-category coverage, complete pagination,
+cache invalidation and selected reads through the public interfaces.
+Do not turn a model selection error into a new keyword exception.
+
+Classification is stored in `managed/.stash/catalog.json`, not config or skill
+trees. Use `classify` with a current content hash. Unknown source attribution
+must remain unknown. Author identity never authorizes remote replacement.
+
+Use `doctor` only for a health check or a real metadata problem. Its coverage
+is limited to registered roots; backups and plugin caches are not libraries.
 
 ## Security changes
 
@@ -48,6 +56,10 @@ Review [SECURITY.md](../SECURITY.md) and run the lifecycle tests when changing
 path handling, managed writes, provenance, locks, journals, or recovery. Keep
 cross-platform CI for these changes because link, rename, realpath, and lock
 behavior differs by operating system.
+
+Build and lifecycle cleanup share the private recycling implementation and its
+[platform requirements](installation.md#requirements). An unavailable provider
+fails without permanent deletion; keep its reported path for diagnosis.
 
 ## Vendor contract review
 

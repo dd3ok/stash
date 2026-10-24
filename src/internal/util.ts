@@ -2,33 +2,24 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { homedir, platform } from "node:os";
 import path from "node:path";
+import type { CatalogSource } from "../types.js";
 
-const STOP_WORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "about",
-  "for",
-  "find",
-  "list",
-  "me",
-  "of",
-  "or",
-  "show",
-  "skill",
-  "skills",
-  "tell",
-  "the",
-  "to",
-  "with",
-  "관련",
-  "목록",
-  "보여줘",
-  "스킬",
-  "스킬들",
-  "알려줘",
-  "찾아줘",
-]);
+export function sourceDisplayName(source?: CatalogSource): string {
+  if (source?.url) {
+    try {
+      const parsed = new URL(source.url);
+      if (parsed.hostname.toLocaleLowerCase("und") === "github.com") {
+        const parts = parsed.pathname.replace(/^\/+|\/+$/gu, "").split("/");
+        if (parts.length >= 2) {
+          return `${parts[0]}/${parts[1]!.replace(/\.git$/iu, "")}`;
+        }
+      }
+    } catch {
+      // Preserve recorded attribution when the URL is not parseable.
+    }
+  }
+  return source?.displayName ?? source?.id ?? source?.url ?? "(unattributed)";
+}
 
 export function sha256(value: string | Buffer): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -45,21 +36,6 @@ export async function sha256File(filePath: string): Promise<string> {
   return `sha256:${hash.digest("hex")}`;
 }
 
-export function normalizeText(value: string): string {
-  return value
-    .normalize("NFKC")
-    .toLocaleLowerCase("und")
-    .replace(/[_/\\]+/gu, " ")
-    .replace(/[-‐‑‒–—]+/gu, " ")
-    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-export function compactText(value: string): string {
-  return normalizeText(value).replace(/\s+/gu, "");
-}
-
 export function normalizeSourceIdentity(value: string): string {
   return value
     .normalize("NFKC")
@@ -74,45 +50,6 @@ export function normalizeSourceUrl(value: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-export function tokenize(value: string): string[] {
-  const normalized = normalizeText(value);
-  if (!normalized) {
-    return [];
-  }
-  return [
-    ...new Set(
-      normalized
-        .split(/\s+/u)
-        .filter((token) => token.length >= 2 && !STOP_WORDS.has(token)),
-    ),
-  ];
-}
-
-export function trigrams(value: string): Set<string> {
-  const compact = compactText(value);
-  if (compact.length <= 3) {
-    return compact ? new Set([compact]) : new Set();
-  }
-  const result = new Set<string>();
-  for (let index = 0; index <= compact.length - 3; index += 1) {
-    result.add(compact.slice(index, index + 3));
-  }
-  return result;
-}
-
-export function jaccard(left: Set<string>, right: Set<string>): number {
-  if (left.size === 0 || right.size === 0) {
-    return 0;
-  }
-  let intersection = 0;
-  for (const value of left) {
-    if (right.has(value)) {
-      intersection += 1;
-    }
-  }
-  return intersection / (left.size + right.size - intersection);
 }
 
 export function isPathInside(root: string, candidate: string): boolean {
@@ -219,10 +156,6 @@ export function platformManagedPath(): string {
     "stash",
     "managed",
   );
-}
-
-export function safeCatalogSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/gu, "_");
 }
 
 export function clampPageSize(value: number | undefined, fallback: number): number {

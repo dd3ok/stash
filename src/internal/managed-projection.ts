@@ -222,9 +222,15 @@ export async function projectManagedCopies(
         ...(managedRecord.source.revision
           ? { revision: managedRecord.source.revision }
           : {}),
+        ...(managedRecord.source.repositoryPath
+          ? { repositoryPath: managedRecord.source.repositoryPath }
+          : {}),
+        ...(managedRecord.source.trackingRef
+          ? { trackingRef: managedRecord.source.trackingRef }
+          : {}),
       };
       events.push(
-        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}`,
+        `record:${managedRecord.skillId}:${managedRecord.source.url ?? ""}:${managedRecord.source.revision ?? ""}:${managedRecord.source.repositoryPath ?? ""}:${managedRecord.source.trackingRef ?? ""}:${record.group ?? ""}`,
       );
       canonicalBySkillId.set(managedRecord.skillId, record);
     }

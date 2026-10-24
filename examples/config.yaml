@@ -1,4 +1,4 @@
-version: 1
+version: 2
 catalogs:
   - id: sample
     root: "./sample-catalog"
@@ -10,7 +10,4 @@ catalogs:
       - claude-code
       - antigravity
 defaults:
-  pageSize: 40
-  cacheTtlMs: 30000
-  materialScoreThreshold: 2
-  locale: ko-KR
+  pageSize: 50
